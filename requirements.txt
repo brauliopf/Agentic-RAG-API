@@ -1,0 +1,8 @@
+bs4
+fastapi[standard]
+langchain-text-splitters
+langchain-community
+langchain[groq] # install core langchain, groq and "flavored dependencies"
+langchain[openai]
+langgraph
+python-dotenv
