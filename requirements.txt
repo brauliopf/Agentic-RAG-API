@@ -1,3 +1,4 @@
+# Existing dependencies
 bs4
 fastapi[standard]
 langchain-text-splitters
@@ -5,4 +6,11 @@ langchain-community
 langchain[groq] # install core langchain, groq and "flavored dependencies"
 langchain[openai]
 langgraph
+langsmith>=0.1.0  # LangSmith for monitoring and debugging
 python-dotenv
+
+# Phase 1 dependencies
+pydantic>=2.0.0 # Data validation and settings management using Python type hints.
+pydantic-settings>=2.0.0
+structlog>=23.0.0
+typing-extensions>=4.0.0 # Enhance Python's type hinting capabilities with access to new type hinting features before they are officially supported in the language.
