@@ -16,4 +16,11 @@ class QueryRequest(BaseModel):
     section_filter: Optional[Literal["beginning", "middle", "end"]] = Field(
         default=None, 
         description="Filter documents by section"
+    )
+
+
+class GradeDocuments(BaseModel):
+    """Grade documents using a binary score for relevance check."""
+    binary_score: str = Field(
+        description="Relevance score: 'yes' if relevant, or 'no' if not relevant"
     ) 

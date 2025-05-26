@@ -4,7 +4,7 @@ from typing import AsyncGenerator
 
 from ....models.requests import QueryRequest
 from ....models.responses import QueryResponse
-from ....services.rag_service import RAGService
+from ....services.rag_service import NonAgenticRAGService
 from ....core.logging import get_logger
 from ...deps import get_rag_service
 
@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 @router.post("/query", response_model=QueryResponse)
 async def submit_query(
     request: QueryRequest,
-    rag_service: RAGService = Depends(get_rag_service)
+    rag_service: NonAgenticRAGService = Depends(get_rag_service)
 ):
     """Submit a RAG query and get the response."""
     try:

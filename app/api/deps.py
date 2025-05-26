@@ -1,13 +1,17 @@
 from typing import Generator
 
-from ..services.rag_service import rag_service
+from ..services.rag_service import nonagentic_rag_service, agentic_rag_service
 from ..services.document_service import document_service
 from ..services.llm_service import llm_service
 
 
+def get_agentic_rag_service():
+    """Dependency to get agentic RAG service instance."""
+    return agentic_rag_service
+
 def get_rag_service():
     """Dependency to get RAG service instance."""
-    return rag_service
+    return nonagentic_rag_service
 
 
 def get_document_service():
