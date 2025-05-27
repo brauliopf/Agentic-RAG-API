@@ -4,6 +4,7 @@ from typing import Literal
 
 from langgraph.graph import START, StateGraph
 from typing import List, Dict, Any, Optional, Literal
+from langgraph.checkpoint.memory import MemorySaver
 
 from ..core.logging import get_logger
 from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, GENERATE_ANSWER_TEMPLATE
@@ -62,7 +63,11 @@ class RAGServiceAgentic:
         def generate_query_or_respond(state: MessagesState):
             """Decide to retrieve, or simply respond to the user.
             Takes all the messages in the state and returns a response."""
-            response = llm_service.llm.bind_tools([retriever_tool]).invoke(state["messages"])
+
+            sys_prompt = "You are an assistant for question-answering tasks. Use three sentences maximum and keep the answer concise. If you don't know the answer even after retrieving the context once or multiple times (max 3 times), just say that you don't know."
+            messages = [SystemMessage(content=sys_prompt)] + state["messages"]
+
+            response = llm_service.llm.bind_tools([retriever_tool]).invoke(messages)
             return {"messages": [response]}
         
         workflow.add_node(generate_query_or_respond)
@@ -125,32 +130,34 @@ class RAGServiceAgentic:
         workflow.add_edge("rewrite_question", "generate_query_or_respond")
         workflow.add_edge("generate_answer", END)
 
-        # Compile
-        return workflow.compile()
+        # Compile with memory checkpointer for session persistence
+        memory = MemorySaver()
+        return workflow.compile(checkpointer=memory)
     
     async def query(
         self, 
-        question: str, 
-        max_docs: Optional[int] = None,
-        section_filter: Optional[Literal["beginning", "middle", "end"]] = None
+        question: str,
+        thread_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Process a RAG query and return the result."""
         query_id = str(uuid.uuid4())
         start_time = time.time()
+
+        if thread_id is None:
+            thread_id = f"query_{query_id}"
         
         try:
-            logger.info("Starting RAG query", query_id=query_id, question=question)
-                    
-            # Prepare initial state with system message first
-            sys_prompt_template = "You are an assistant for question-answering tasks. Use three sentences maximum and keep the answer concise. If you don't know the answer even after retrieving the context once or multiple times, just say that you don't know. The question is: {question}"
-            initial_state = {
-                "messages": [
-                    HumanMessage(content=sys_prompt_template.format(question=question))
-                ]
-            }
+            logger.info("Starting RAG query", query_id=query_id, question=question, thread_id=thread_id)
+            
+            # Create config with thread_id for session persistence
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            # Add the new user message to the conversation
+            # The graph will maintain conversation history via the checkpointer
+            input_message = {"messages": [HumanMessage(content=question)]}
             
             # Run the RAG pipeline
-            result = self.graph.invoke(initial_state)
+            result = self.graph.invoke(input_message, config=config)
             
             processing_time = time.time() - start_time
             

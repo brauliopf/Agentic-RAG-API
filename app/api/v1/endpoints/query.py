@@ -42,8 +42,7 @@ async def submit_query_agentic(
     try:
         result = await rag_service.query(
             question=request.question,
-            max_docs=request.max_docs,
-            section_filter=request.section_filter
+            thread_id=request.thread_id
         )
         
         return QueryResponse(**result)
