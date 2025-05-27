@@ -1,16 +1,18 @@
 # FastAPI RAG System
 
-A production-ready FastAPI RAG (Retrieval-Augmented Generation) system implementing Phase 1 of the development plan.
+A production-ready FastAPI RAG (Retrieval-Augmented Generation) system with both traditional and agentic RAG implementations using LangGraph.
+This LangGraph has 3 main steps: (1) decide whether to answer or to retrieve content from the vector store; (2) retrieve content and judge whehter that content is relevant to answer the question; (3) answer he question based on the full conversation history ("memory" feature).
 
 ## Features
 
-- **Document Ingestion**: Ingest documents from URLs with automatic chunking and embedding
-- **RAG Queries**: Ask questions and get AI-generated answers based on ingested documents
-- **Streaming Responses**: Real-time streaming of query responses
-- **Section Filtering**: Filter documents by section (beginning, middle, end)
+- **Document Ingestion**: Ingest documents from URLs with automatic chunking and embedding using BeautifulSoup
+- **Dual RAG Modes**:
+  - **Traditional RAG**: Query analysis → retrieval → generation pipeline
+  - **Agentic RAG**: Self-correcting RAG with document grading and query rewriting
+- **Section Filtering**: Filter documents by section (beginning, middle, end) during retrieval
 - **Structured Logging**: Comprehensive logging with structlog
-- **Health Monitoring**: Health check endpoints
 - **API Documentation**: Auto-generated OpenAPI/Swagger documentation
+- **Graph Visualization**: Automatic generation of LangGraph pipeline visualizations
 
 ## Architecture
 
@@ -20,15 +22,21 @@ agentic-rag/
 │   ├── __init__.py
 │   ├── main.py                 # FastAPI application entry point
 │   ├── core/
-│   │   ├── config.py          # Configuration management
-│   │   └── logging.py         # Logging configuration
+│   │   ├── config.py          # Configuration management with Pydantic Settings
+│   │   ├── logging.py         # Structured logging configuration
+│   │   └── prompts.py         # LLM prompt templates
 │   ├── models/
 │   │   ├── requests.py        # Pydantic request models
 │   │   └── responses.py       # Pydantic response models
 │   ├── services/
 │   │   ├── llm_service.py     # LLM and embeddings management
 │   │   ├── document_service.py # Document ingestion and storage
-│   │   └── rag_service.py     # RAG pipeline with LangGraph
+│   │   ├── rag_service.py     # Traditional RAG pipeline with LangGraph
+│   │   ├── rag_service_agentic.py # Agentic RAG pipeline with LangGraph
+│   │   ├── vector_store_factory.py # Vector store factory pattern
+│   │   └── graphs/            # Generated LangGraph visualizations
+│   │       ├── graph_nonagentic.png
+│   │       └── graph_agentic.png
 │   ├── api/
 │   │   ├── deps.py            # Dependency injection
 │   │   └── v1/
@@ -36,11 +44,12 @@ agentic-rag/
 │   │       └── endpoints/
 │   │           ├── health.py   # Health check endpoints
 │   │           ├── documents.py # Document management endpoints
-│   │           └── query.py    # RAG query endpoints
+│   │           └── query.py    # RAG query endpoints (both modes)
 │   └── utils/
 │       └── helpers.py         # Utility functions
 ├── requirements.txt           # Python dependencies
-└── app.py                    # Legacy entry point (redirects to new structure)
+├── sandbox.ipynb            # Development notebook
+└── explore/                 # Exploration and testing files
 ```
 
 ## Installation
@@ -55,19 +64,24 @@ pip install -r requirements.txt
    Create a `.env` file with the following variables:
 
 ```bash
-# OpenAI Configuration
+# OpenAI Configuration (Required)
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Application Configuration (optional)
+# Application Configuration (Optional)
 DEBUG=false
 LOG_LEVEL=INFO
 HOST=0.0.0.0
 PORT=8000
 
-# RAG Configuration (optional)
+# LLM Configuration (Optional)
+OPENAI_MODEL=gpt-4o-mini
+EMBEDDING_MODEL=text-embedding-ada-002
+
+# RAG Configuration (Optional)
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=200
 MAX_DOCS_RETRIEVAL=4
+VECTOR_STORE_TYPE=in_memory
 ```
 
 ## Usage
@@ -75,11 +89,11 @@ MAX_DOCS_RETRIEVAL=4
 ### Running the Application
 
 ```bash
-# Using the new structure
+# Using the module syntax (recommended)
 python -m app.main
 
-# Or using the legacy entry point
-python app.py
+# Or directly
+python app/main.py
 ```
 
 The application will start on `http://localhost:8000`
@@ -91,123 +105,90 @@ The application will start on `http://localhost:8000`
 
 ### API Endpoints
 
-#### Health Check
-
-- `GET /api/v1/health` - Check application health
-
 #### Document Management
 
-- `POST /api/v1/documents/ingest` - Ingest a document from URL
+- `POST /api/v1/documents/ingest` - Ingest documents from URLs (accepts list)
 - `GET /api/v1/documents` - List all ingested documents
 - `GET /api/v1/documents/{doc_id}` - Get specific document
 - `DELETE /api/v1/documents/{doc_id}` - Delete a document
 
 #### RAG Queries
 
-- `POST /api/v1/query` - Submit a RAG query
-- `GET /api/v1/query/{query_id}` - Get query result by ID
-- `POST /api/v1/query/stream` - Stream a RAG query response
+- `POST /api/v1/query` - Submit a traditional RAG query
+- `POST /api/v1/query-agentic` - Submit an agentic RAG query (with self-correction)
 
-### Example Usage
+## RAG Pipeline Modes
 
-#### 1. Ingest a Document
+### Traditional RAG Pipeline
 
-```bash
-curl -X POST "http://localhost:8000/api/v1/documents/ingest" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source_type": "url",
-    "content": "https://example.com/article",
-    "metadata": {"title": "Example Article"}
-  }'
-```
+The traditional RAG pipeline follows a linear approach:
 
-#### 2. Submit a Query
+1. **Query Analysis**: Extracts search parameters and section filters
+2. **Document Retrieval**: Searches vector store for relevant documents
+3. **Answer Generation**: Generates response using retrieved context
 
-```bash
-curl -X POST "http://localhost:8000/api/v1/query" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "What is the main topic of the article?",
-    "max_docs": 4,
-    "section_filter": "beginning"
-  }'
-```
+### Agentic RAG Pipeline
 
-#### 3. Stream a Query
+The agentic RAG pipeline includes self-correction mechanisms:
 
-```bash
-curl -X POST "http://localhost:8000/api/v1/query/stream" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "Summarize the key points",
-    "max_docs": 4
-  }'
-```
+1. **Query or Respond**: Decides whether to retrieve documents or respond directly
+2. **Document Retrieval**: Uses retriever tool to fetch relevant documents
+3. **Document Grading**: Evaluates relevance of retrieved documents
+4. **Query Rewriting**: Rewrites query if documents are not relevant
+5. **Answer Generation**: Generates final response with validated context
 
 ## Configuration
 
 The application uses Pydantic Settings for configuration management. All settings can be configured via environment variables:
 
-### Vector Store Configuration
-
-The system supports multiple vector store backends through a factory pattern:
-
-- **in_memory** (default): Fast, ephemeral storage for development
-- **chroma**: Persistent vector database (requires `pip install langchain-chroma`)
-- **faiss**: High-performance similarity search (requires `pip install faiss-cpu`)
-
-To switch vector stores, set the `VECTOR_STORE_TYPE` environment variable:
-
-```bash
-# Use Chroma for persistent storage
-export VECTOR_STORE_TYPE=chroma
-
-# Use FAISS for high-performance search
-export VECTOR_STORE_TYPE=faiss
-```
-
-### All Configuration Options
-
-- `OPENAI_API_KEY`: Required OpenAI API key
-- `DEBUG`: Enable debug mode (default: false)
-- `LOG_LEVEL`: Logging level (default: INFO)
-- `HOST`: Server host (default: 0.0.0.0)
-- `PORT`: Server port (default: 8000)
-- `CHUNK_SIZE`: Document chunk size (default: 1000)
-- `CHUNK_OVERLAP`: Chunk overlap (default: 200)
-- `MAX_DOCS_RETRIEVAL`: Maximum documents to retrieve (default: 4)
-- `VECTOR_STORE_TYPE`: Vector store type: in_memory, chroma, faiss (default: in_memory)
-
 ## Technology Stack
 
 - **FastAPI**: Modern, fast web framework for building APIs
 - **LangChain**: Framework for developing applications with LLMs
-- **LangGraph**: Library for building stateful, multi-actor applications
-- **OpenAI**: LLM and embedding models
+- **LangGraph**: Library for building stateful, multi-actor applications with graphs
+- **OpenAI**: LLM and embedding models (GPT-4o-mini, text-embedding-ada-002)
 - **Pydantic**: Data validation and settings management
 - **Structlog**: Structured logging
-- **BeautifulSoup**: HTML parsing for web scraping
+- **BeautifulSoup**: HTML parsing for web scraping with CSS class filtering
 - **Vector Store Factory**: Configurable vector storage backends (InMemory, Chroma, FAISS)
 
-## Limitations (Phase 1)
+## Document Processing
 
-- Default in-memory vector storage (data is lost on restart - switch to Chroma/FAISS for persistence)
-- Document deletion support varies by vector store implementation
-- Basic error handling and validation
-- No authentication or authorization
-- No rate limiting
-- No persistent storage
+The system uses BeautifulSoup with CSS class filtering to extract content from web pages:
 
-## Next Steps (Phase 2 & 3)
+- Targets specific CSS classes: `post-content`, `post-title`, `post-header`
+- Automatically chunks documents using RecursiveCharacterTextSplitter
+- Adds section metadata (beginning, middle, end) to chunks for filtering
+- Supports metadata attachment during ingestion
 
-- Implement persistent vector database (Chroma, Pinecone, etc.)
+## Current Limitations
+
+- **Limited Document Embedding**: URL scraping limited by our sample (target) HTML structure
+- **Vector Store Persistence**: Default in-memory storage loses data on restart
+- **Document Deletion**: Limited support varies by vector store implementation
+- **Content Extraction**: Currently optimized for blog posts with specific CSS classes
+- **Authentication**: No authentication or authorization implemented
+- **Rate Limiting**: No rate limiting implemented
+- **Error Recovery**: Basic error handling without retry mechanisms
+
+## Development Features
+
+- **Graph Visualization**: Automatic generation of LangGraph pipeline diagrams
+- **Structured Logging**: Comprehensive logging with query tracking
+- **Development Notebook**: Included sandbox.ipynb for experimentation
+- **Modular Architecture**: Clean separation of concerns with dependency injection
+
+## Next Steps
+
+- Implement persistent vector database configuration
 - Add authentication and authorization
 - Implement rate limiting and caching
 - Add comprehensive monitoring and metrics
-- Implement batch processing
-- Add support for multiple document types
-- Enhanced error handling and recovery
+- Support for multiple document types (PDF, DOCX, etc.)
+- Enhanced error handling and recovery mechanisms
 - Unit and integration tests
 - Docker containerization
 - CI/CD pipeline
+- Streaming response support
+- Batch document processing
+- ...

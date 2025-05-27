@@ -60,19 +60,20 @@ class RAGServiceAgentic:
         # If we need to retrieve, "response" will contain a tool call
         # If we don't need to retrieve, "response" will contain a message with the answer
         def generate_query_or_respond(state: MessagesState):
-            """Decide to retrieve, or simply respond to the user."""
+            """Decide to retrieve, or simply respond to the user.
+            Takes all the messages in the state and returns a response."""
             response = llm_service.llm.bind_tools([retriever_tool]).invoke(state["messages"])
             return {"messages": [response]}
         
         workflow.add_node(generate_query_or_respond)
         workflow.add_edge(START, "generate_query_or_respond")
-        workflow.add_node("tools_node", ToolNode([retriever_tool]))
+        workflow.add_node("retriever_node", ToolNode([retriever_tool]))
         workflow.add_conditional_edges(
             "generate_query_or_respond",
             tools_condition, # LangGraph's function to check if the LLM's response contains tool calls
             {
-                "tools": "tools_node", # if there is tool call, go to the tools node
-                END: "generate_answer", # if there is not tool call, go to the end node
+                "tools": "retriever_node", # if there is tool call, go to the tools node
+                END: END, # if there is not tool call, go to the end node
             },
         )
 
@@ -118,7 +119,7 @@ class RAGServiceAgentic:
                 return "rewrite_question"
             
         workflow.add_conditional_edges(
-            "tools_node",
+            "retriever_node",
             grade_documents
         )
         workflow.add_edge("rewrite_question", "generate_query_or_respond")
@@ -141,9 +142,10 @@ class RAGServiceAgentic:
             logger.info("Starting RAG query", query_id=query_id, question=question)
                     
             # Prepare initial state with system message first
+            sys_prompt_template = "You are an assistant for question-answering tasks. Use three sentences maximum and keep the answer concise. If you don't know the answer even after retrieving the context once or multiple times, just say that you don't know. The question is: {question}"
             initial_state = {
                 "messages": [
-                    HumanMessage(content=question)
+                    HumanMessage(content=sys_prompt_template.format(question=question))
                 ]
             }
             
