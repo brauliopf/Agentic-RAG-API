@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 
 class RAGServiceAgentic:
     """
-    Service for handling RAG queries using LangGraph agentic pipeline.
+    Service for handling RAG queries using a LangGraph.
     """
 
     def __init__(self):
@@ -45,6 +45,7 @@ class RAGServiceAgentic:
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph pipeline."""
 
+        # 1. Create Retriever Tool
         retriever = document_service.vector_store.as_retriever()
         retriever_tool = create_retriever_tool(
             retriever,
@@ -52,38 +53,33 @@ class RAGServiceAgentic:
             "Search and return information about Lilian Weng blog posts.",
         )
 
-        # BUILD THE GRAPH
+        # 2. Get graph builder
         workflow = StateGraph(MessagesState)
 
+        # 3. Node to decide if we need to retrieve or respond
+        # If we need to retrieve, "response" will contain a tool call
+        # If we don't need to retrieve, "response" will contain a message with the answer
         def generate_query_or_respond(state: MessagesState):
             """Decide to retrieve, or simply respond to the user."""
-
-            # ADD SYSTEM PROMPT
-            system_prompt = """
-            You are an assistant for question-answering tasks. You reply strictly using the context provided. If the context provided does not contain the answer, just say that you don't know. Use the following pieces of retrieved context to answer the question. Use three sentences maximum and keep the answer concise.
-            """
-            msg_with_prompt = [SystemMessage(content=system_prompt)] + state["messages"]
-            response = (llm_service.llm.bind_tools([retriever_tool]).invoke(msg_with_prompt))
+            response = llm_service.llm.bind_tools([retriever_tool]).invoke(state["messages"])
             return {"messages": [response]}
         
         workflow.add_node(generate_query_or_respond)
         workflow.add_edge(START, "generate_query_or_respond")
-
-
         workflow.add_node("tools_node", ToolNode([retriever_tool]))
         workflow.add_conditional_edges(
             "generate_query_or_respond",
             tools_condition, # LangGraph's function to check if the LLM's response contains tool calls
             {
                 "tools": "tools_node", # if there is tool call, go to the tools node
-                END: END, # if there is not tool call, go to the end node
+                END: "generate_answer", # if there is not tool call, go to the end node
             },
         )
 
+        # 4. Node to rewrite the question
         def rewrite_question(state: MessagesState):
             """Rewrite the original user question."""
-            messages = state["messages"]
-            question = messages[0].content
+            question = state["messages"][0].content
             prompt = REWRITE_QUESTION_TEMPLATE.format(question=question)
             response = llm_service.llm.invoke([{"role": "user", "content": prompt}])
             return {"messages": [HumanMessage(content=response.content)]}
@@ -104,6 +100,7 @@ class RAGServiceAgentic:
             state: MessagesState,
         ) -> Literal["generate_answer", "rewrite_question"]:
             """Determine whether the retrieved documents are relevant to the question."""
+            # Find the human message (skip system message at index 0)
             question = state["messages"][0].content
             context = state["messages"][-1].content
 
@@ -143,9 +140,11 @@ class RAGServiceAgentic:
         try:
             logger.info("Starting RAG query", query_id=query_id, question=question)
                     
-            # Prepare initial state
+            # Prepare initial state with system message first
             initial_state = {
-                "messages": [HumanMessage(content=question)]
+                "messages": [
+                    HumanMessage(content=question)
+                ]
             }
             
             # Run the RAG pipeline
