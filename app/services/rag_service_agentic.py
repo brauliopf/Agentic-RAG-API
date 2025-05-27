@@ -64,8 +64,9 @@ class RAGServiceAgentic:
             """Decide to retrieve, or simply respond to the user.
             Takes all the messages in the state and returns a response."""
 
-            sys_prompt = "You are an assistant for question-answering tasks. Use three sentences maximum and keep the answer concise. If you don't know the answer even after retrieving the context once or multiple times (max 3 times), just say that you don't know."
-            messages = [SystemMessage(content=sys_prompt)] + state["messages"]
+            sys_prompt_template = "You are an assistant for question-answering tasks. You will be given a question and a conversation history, with content retrieved. You will need to decide whether: to retrieve more context or to answer the question. If you don't know the answer even after retrieving the context once or multiple times, just say that you don't know. The question is: {question}."
+            sys_prompt = sys_prompt_template.format(question=state["messages"][-1].content)
+            messages = state["messages"][:-1] + [SystemMessage(content=sys_prompt)]
 
             response = llm_service.llm.bind_tools([retriever_tool]).invoke(messages)
             return {"messages": [response]}
@@ -153,10 +154,10 @@ class RAGServiceAgentic:
             config = {"configurable": {"thread_id": thread_id}}
             
             # Add the new user message to the conversation
-            # The graph will maintain conversation history via the checkpointer
             input_message = {"messages": [HumanMessage(content=question)]}
             
             # Run the RAG pipeline
+            # Graph has a checkpointer that will maintain conversation history via the thread_id
             result = self.graph.invoke(input_message, config=config)
             
             processing_time = time.time() - start_time
