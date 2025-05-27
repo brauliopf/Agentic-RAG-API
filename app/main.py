@@ -4,13 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
-# Alternative: Absolute imports (if you want to run the file directly)
-# from app.core.config import settings
-# from app.core.logging import configure_logging, get_logger
-# from app.api.v1.api import api_router
-# from app.models.responses import ErrorResponse
-
-# Current: Relative imports (requires module syntax: python -m app.main)
+# Relative imports (requires module syntax: python -m app.main)
 from .core.config import settings
 from .core.logging import configure_logging, get_logger
 from .api.v1.api import api_router
@@ -20,13 +14,15 @@ from .models.responses import ErrorResponse
 configure_logging()
 logger = get_logger(__name__)
 
-
+# Python context manager that handles application lifecycle events in FastAPI.
+# "Before yield" gets executed on startup
+# "After yield" gets executed on shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan context manager."""
+    """Application lifespan context manager"""
     # Startup
     logger.info("Starting FastAPI RAG application", version=settings.app_version)
-    # Initialize services (they will be lazy-loaded when first accessed)
+    # (services will be lazy-loaded when first accessed)
     logger.info("Application startup completed")
     
     yield

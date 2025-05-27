@@ -10,34 +10,36 @@ from ...deps import get_document_service
 router = APIRouter()
 logger = get_logger(__name__)
 
-
-@router.post("/documents/ingest", response_model=DocumentResponse)
-async def ingest_document(
-    request: DocumentIngestRequest,
+@router.post("/documents/ingest", response_model=List[DocumentResponse])
+async def ingest_documents(
+    request: List[DocumentIngestRequest],
     document_service: DocumentService = Depends(get_document_service)
 ):
-    """Ingest a document from a URL. Returns the retrieved document."""
+    """Ingest documents from a list of URLs. Returns the retrieved documents."""
+    docs = []
     try:
-        if request.source_type != "url":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only URL sources are supported currently"
+        for req in request:
+            if req.source_type != "url":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Only URL sources are supported currently"
+                )
+            
+            doc_id = await document_service.ingest_url(
+                url=req.content,
+                metadata=req.metadata
             )
+            
+            # Get the document details
+            doc_data = await document_service.get_document(doc_id)
+            if not doc_data:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to retrieve ingested document"
+                )
+            docs.append(DocumentResponse(**doc_data))
         
-        doc_id = await document_service.ingest_url(
-            url=request.content,
-            metadata=request.metadata
-        )
-        
-        # Get the document details
-        doc_data = await document_service.get_document(doc_id)
-        if not doc_data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to retrieve ingested document"
-            )
-        
-        return DocumentResponse(**doc_data)
+        return docs
         
     except HTTPException:
         raise
@@ -47,7 +49,7 @@ async def ingest_document(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Document ingestion failed: {str(e)}"
         )
-
+    
 
 @router.get("/documents", response_model=List[DocumentResponse])
 async def list_documents(
