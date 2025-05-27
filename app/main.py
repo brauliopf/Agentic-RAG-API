@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan context manager"""
     # Startup
     logger.info("Starting FastAPI RAG application", version=settings.app_version)
-    # (services will be lazy-loaded when first accessed)
+    # (services will be lazy-loaded)
     logger.info("Application startup completed")
     
     yield

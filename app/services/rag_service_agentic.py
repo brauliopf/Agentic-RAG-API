@@ -10,7 +10,7 @@ from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, 
 from .llm_service import llm_service
 from .document_service import document_service
 from langchain_core.prompts import PromptTemplate
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import MessagesState, StateGraph
 from langchain.tools.retriever import create_retriever_tool
 
@@ -56,14 +56,19 @@ class RAGServiceAgentic:
         workflow = StateGraph(MessagesState)
 
         def generate_query_or_respond(state: MessagesState):
-            """Call the model to generate a response based on the current state. Given
-            the question, it will decide to retrieve using the retriever tool, or simply respond to the user.
+            """Decide to retrieve, or simply respond to the user."""
+
+            # ADD SYSTEM PROMPT
+            system_prompt = """
+            You are an assistant for question-answering tasks. You reply strictly using the context provided. If the context provided does not contain the answer, just say that you don't know. Use the following pieces of retrieved context to answer the question. Use three sentences maximum and keep the answer concise.
             """
-            response = (llm_service.llm.bind_tools([retriever_tool]).invoke(state["messages"]))
+            msg_with_prompt = [SystemMessage(content=system_prompt)] + state["messages"]
+            response = (llm_service.llm.bind_tools([retriever_tool]).invoke(msg_with_prompt))
             return {"messages": [response]}
         
         workflow.add_node(generate_query_or_respond)
         workflow.add_edge(START, "generate_query_or_respond")
+
 
         workflow.add_node("tools_node", ToolNode([retriever_tool]))
         workflow.add_conditional_edges(

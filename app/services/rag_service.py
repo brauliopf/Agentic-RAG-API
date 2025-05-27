@@ -10,10 +10,9 @@ from langgraph.graph import START, StateGraph
 
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.prompts import RAG_QA_PROMPT
+from ..core.prompts import RAG_QA_PROMPT_TEMPLATE
 from .llm_service import llm_service
 from .document_service import document_service
-from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph
 
 from langgraph.graph import StateGraph, START
@@ -54,14 +53,14 @@ class RAGService:
     def _initialize_pipeline(self):
         """Initialize the RAG pipeline with LangGraph."""
         try:
-            self.prompt = RAG_QA_PROMPT
+            self.prompt = RAG_QA_PROMPT_TEMPLATE
             
             # Build the graph
             self.graph = self._build_graph()
             logger.info("RAG pipeline initialized successfully")
             # Save graph visualization to file
             graph_png = self.graph.get_graph().draw_mermaid_png()
-            with open("./app/services/graph_nonagentic.png", "wb") as f:
+            with open("./app/services/graphs/graph_nonagentic.png", "wb") as f:
                 f.write(graph_png)
             
         except Exception as e:
