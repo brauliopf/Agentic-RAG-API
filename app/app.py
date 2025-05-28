@@ -7,13 +7,13 @@ import gradio as gr
 async def query(question: str, max_docs: Optional[int] = None, section_filter: Optional[Literal["beginning", "middle", "end"]] = None, thread_id: Optional[str] = None):
     return await rag_service_agentic.query(question, max_docs, section_filter, thread_id)
 
-def main(input):
-    result = asyncio.run(query(input))
+def main(input, thread_id: Optional[str] = None):
+    result = asyncio.run(query(input, None, None, thread_id))
     return result["answer"]
 
 demo = gr.Interface(
     fn=main,
-    inputs=["text"],
+    inputs=["text", "text"],
     outputs=["text"],
 )
 
