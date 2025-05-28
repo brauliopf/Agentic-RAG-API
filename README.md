@@ -1,7 +1,15 @@
 # FastAPI RAG System
 
-A production-ready FastAPI RAG (Retrieval-Augmented Generation) system with both traditional and agentic RAG implementations using LangGraph.
-This LangGraph has 3 main steps: (1) decide whether to answer or to retrieve content from the vector store; (2) retrieve content and judge whehter that content is relevant to answer the question; (3) answer he question based on the full conversation history ("memory" feature).
+A production-ready FastAPI RAG (Retrieval-Augmented Generation) system with an agentic RAG implementations using LangGraph, and memory to support multi-turn conversations.
+
+**LangGraph:**
+
+This LangGraph has 3 main steps
+(1) decide whether to answer based on the full conversation history or to retrieve content from the vector store;
+(2) retrieve content and judge wheter that content is relevant to answer the question;
+(3) if content is irrelevant, try to adjust the retrieval prompt.
+
+![LangGraph Pipeline](app/services/graphs/graph_agentic.png)
 
 ## Features
 
@@ -9,7 +17,6 @@ This LangGraph has 3 main steps: (1) decide whether to answer or to retrieve con
 - **Dual RAG Modes**:
   - **Traditional RAG**: Query analysis → retrieval → generation pipeline
   - **Agentic RAG**: Self-correcting RAG with document grading and query rewriting
-- **Section Filtering**: Filter documents by section (beginning, middle, end) during retrieval
 - **Structured Logging**: Comprehensive logging with structlog
 - **API Documentation**: Auto-generated OpenAPI/Swagger documentation
 - **Graph Visualization**: Automatic generation of LangGraph pipeline visualizations
@@ -20,7 +27,8 @@ This LangGraph has 3 main steps: (1) decide whether to answer or to retrieve con
 agentic-rag/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                 # FastAPI application entry point
+│   ├── main.py                # FastAPI application entry point
+│   ├── app.py                 # Gradio application starter
 │   ├── core/
 │   │   ├── config.py          # Configuration management with Pydantic Settings
 │   │   ├── logging.py         # Structured logging configuration
@@ -103,44 +111,6 @@ The application will start on `http://localhost:8000`
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
-### API Endpoints
-
-#### Document Management
-
-- `POST /api/v1/documents/ingest` - Ingest documents from URLs (accepts list)
-- `GET /api/v1/documents` - List all ingested documents
-- `GET /api/v1/documents/{doc_id}` - Get specific document
-- `DELETE /api/v1/documents/{doc_id}` - Delete a document
-
-#### RAG Queries
-
-- `POST /api/v1/query` - Submit a traditional RAG query
-- `POST /api/v1/query-agentic` - Submit an agentic RAG query (with self-correction)
-
-## RAG Pipeline Modes
-
-### Traditional RAG Pipeline
-
-The traditional RAG pipeline follows a linear approach:
-
-1. **Query Analysis**: Extracts search parameters and section filters
-2. **Document Retrieval**: Searches vector store for relevant documents
-3. **Answer Generation**: Generates response using retrieved context
-
-### Agentic RAG Pipeline
-
-The agentic RAG pipeline includes self-correction mechanisms:
-
-1. **Query or Respond**: Decides whether to retrieve documents or respond directly
-2. **Document Retrieval**: Uses retriever tool to fetch relevant documents
-3. **Document Grading**: Evaluates relevance of retrieved documents
-4. **Query Rewriting**: Rewrites query if documents are not relevant
-5. **Answer Generation**: Generates final response with validated context
-
-## Configuration
-
-The application uses Pydantic Settings for configuration management. All settings can be configured via environment variables:
-
 ## Technology Stack
 
 - **FastAPI**: Modern, fast web framework for building APIs
@@ -152,15 +122,6 @@ The application uses Pydantic Settings for configuration management. All setting
 - **BeautifulSoup**: HTML parsing for web scraping with CSS class filtering
 - **Vector Store Factory**: Configurable vector storage backends (InMemory, Chroma, FAISS)
 
-## Document Processing
-
-The system uses BeautifulSoup with CSS class filtering to extract content from web pages:
-
-- Targets specific CSS classes: `post-content`, `post-title`, `post-header`
-- Automatically chunks documents using RecursiveCharacterTextSplitter
-- Adds section metadata (beginning, middle, end) to chunks for filtering
-- Supports metadata attachment during ingestion
-
 ## Current Limitations
 
 - **Limited Document Embedding**: URL scraping limited by our sample (target) HTML structure
@@ -170,13 +131,6 @@ The system uses BeautifulSoup with CSS class filtering to extract content from w
 - **Authentication**: No authentication or authorization implemented
 - **Rate Limiting**: No rate limiting implemented
 - **Error Recovery**: Basic error handling without retry mechanisms
-
-## Development Features
-
-- **Graph Visualization**: Automatic generation of LangGraph pipeline diagrams
-- **Structured Logging**: Comprehensive logging with query tracking
-- **Development Notebook**: Included sandbox.ipynb for experimentation
-- **Modular Architecture**: Clean separation of concerns with dependency injection
 
 ## Next Steps
 
