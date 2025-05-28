@@ -132,7 +132,8 @@ class RAGService:
         self, 
         question: str, 
         max_docs: Optional[int] = None,
-        section_filter: Optional[Literal["beginning", "middle", "end"]] = None
+        section_filter: Optional[Literal["beginning", "middle", "end"]] = None,
+        thread_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Process a RAG query and return the result."""
         query_id = str(uuid.uuid4())

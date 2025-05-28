@@ -138,7 +138,9 @@ class RAGServiceAgentic:
     async def query(
         self, 
         question: str,
-        thread_id: Optional[str] = None,
+        max_docs: Optional[int] = None,
+        section_filter: Optional[Literal["beginning", "middle", "end"]] = None,
+        thread_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Process a RAG query and return the result."""
         query_id = str(uuid.uuid4())
@@ -158,7 +160,7 @@ class RAGServiceAgentic:
             
             # Run the RAG pipeline
             # Graph has a checkpointer that will maintain conversation history via the thread_id
-            result = self.graph.invoke(input_message, config=config)
+            result = await self.graph.ainvoke(input_message, config=config)
             
             processing_time = time.time() - start_time
             
