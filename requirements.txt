@@ -8,6 +8,7 @@ langchain[openai]
 langgraph
 langsmith>=0.1.0  # LangSmith for monitoring and debugging
 python-dotenv
+gradio
 
 # Phase 1 dependencies
 pydantic>=2.0.0 # Data validation and settings management using Python type hints.
