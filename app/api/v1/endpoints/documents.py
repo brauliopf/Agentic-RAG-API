@@ -10,6 +10,46 @@ from ...deps import get_document_service
 router = APIRouter()
 logger = get_logger(__name__)
 
+
+@router.post("/documents/ingest/tako", response_model=List[DocumentResponse])
+
+async def ingest_documents_tako(
+    request: List[DocumentIngestRequest],
+    document_service: DocumentService = Depends(get_document_service)
+):
+    """Ingest documents from a list of URLs. Returns the retrieved documents."""
+    docs = []
+    try:
+        for req in request:
+            if req.source_type != "url":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Only URL sources are supported currently"
+                )
+            doc_id = await document_service.ingest_url_tako(
+                url=req.content,
+                metadata=req.metadata
+            )
+            # Get the document details
+            doc_data = await document_service.get_document(doc_id)
+            if not doc_data:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to retrieve ingested document"
+                )
+            docs.append(DocumentResponse(**doc_data))
+        
+        return docs
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Document ingestion failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Document ingestion failed: {str(e)}"
+        )
+
+
 @router.post("/documents/ingest", response_model=List[DocumentResponse])
 async def ingest_documents(
     request: List[DocumentIngestRequest],
