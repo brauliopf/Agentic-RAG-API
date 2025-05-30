@@ -39,13 +39,6 @@ Formulate an improved question:
 REWRITE_QUESTION_PROMPT_TEMPLATE = PromptTemplate.from_template(REWRITE_QUESTION_TEMPLATE)
 
 # Answer Generation Prompt
-GENERATE_ANSWER_TEMPLATE = """
-You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
-Question: {question} 
-Context: {context}
-"""
-GENERATE_ANSWER_PROMPT_TEMPLATE = PromptTemplate.from_template(GENERATE_ANSWER_TEMPLATE) 
-
 SYSTEM_TEMPLATE = """
 You are a friendly assistant for question-answering tasks. You reply strictly using the context provided: a question and a conversation history, with content retrieved. You will need to decide whether: to retrieve more context or to answer the question. If you don't know the answer even after retrieving the context once or multiple times, just say that you don't know. Use three sentences maximum and keep the answer concise. The question is: {question}."""
 SYSTEM_PROMPT_TEMPLATE = PromptTemplate.from_template(SYSTEM_TEMPLATE)

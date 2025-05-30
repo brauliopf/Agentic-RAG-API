@@ -1,16 +1,14 @@
 import uuid
 import time
-from typing import Literal
 
 from langgraph.graph import START, StateGraph
-from typing import List, Dict, Any, Optional, Literal
+from typing import Dict, Any, Optional, Literal
 from langgraph.checkpoint.memory import MemorySaver
 
 from ..core.logging import get_logger
-from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, GENERATE_ANSWER_TEMPLATE, SYSTEM_PROMPT_TEMPLATE
+from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, SYSTEM_PROMPT_TEMPLATE
 from .llm_service import llm_service
 from .document_service import document_service
-from langchain_core.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import MessagesState, StateGraph
 from langchain.tools.retriever import create_retriever_tool
@@ -31,6 +29,9 @@ class RAGServiceAgentic:
     def __init__(self):
         try:
             # Build the graph
+            # ** This graph trusts the retrieval process more than it trusts the LLM judgement about the use of the tool.
+            # If the doc grader says the content is good, then the next node does not allow for retrieval, it's got to answer!
+            # Thus, the quality of the grader model is critical.
             self.graph = self._build_graph()
             logger.info("Agentic RAG pipeline initialized successfully")
             # Save graph visualization to file
@@ -93,10 +94,12 @@ class RAGServiceAgentic:
 
         def generate_answer(state: MessagesState):
             """Generate an answer."""
-            question = state["messages"][0].content
-            context = state["messages"][-1].content
-            prompt = GENERATE_ANSWER_TEMPLATE.format(question=question, context=context)
-            response = llm_service.llm.invoke([{"role": "user", "content": prompt}])
+
+            sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=state["messages"][0].content)
+            messages = state["messages"] + [SystemMessage(content=sys_prompt)]
+            response = llm_service.llm.invoke(messages)
+
+
             return {"messages": [response]}
         workflow.add_node(generate_answer)
 
@@ -106,7 +109,6 @@ class RAGServiceAgentic:
             state: MessagesState,
         ) -> Literal["generate_answer", "rewrite_question"]:
             """Determine whether the retrieved documents are relevant to the question."""
-            # Find the human message (skip system message at index 0)
             question = state["messages"][0].content
             context = state["messages"][-1].content
 
