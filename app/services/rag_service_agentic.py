@@ -9,7 +9,7 @@ from ..core.logging import get_logger
 from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, SYSTEM_PROMPT_TEMPLATE
 from .llm_service import llm_service
 from .document_service import document_service
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, RemoveMessage
 from langgraph.graph import MessagesState, StateGraph
 from langchain.tools.retriever import create_retriever_tool
 
@@ -66,9 +66,30 @@ class RAGServiceAgentic:
             Takes all the messages in the state and returns a response."""
 
             sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=state["messages"][-1].content)
-            messages = state["messages"][:-1] + [SystemMessage(content=sys_prompt)]
 
-            response = llm_service.llm.bind_tools([retriever_tool]).invoke(messages)
+            if len(state["messages"]) >= 4:
+                last_human_message = state["messages"][-1]
+                # Invoke the model to generate conversation summary
+                summary_prompt = (
+                    "Distill the above chat messages into a single summary message. "
+                    "Include as many specific details as you can."
+                )
+                summary_message = llm_service.llm.invoke(
+                    state["messages"] + [HumanMessage(content=summary_prompt)]
+                )
+
+                # Delete messages that we no longer want to show up
+                delete_messages = [RemoveMessage(id=m.id) for m in state["messages"]]
+
+                response = llm_service.llm.invoke(
+                    [summary_message, SystemMessage(content=sys_prompt)]
+                )
+                # Return both the response and delete messages as separate items in the messages list
+                return {"messages": [response] + delete_messages}
+            else:
+                messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
+                response = llm_service.llm.bind_tools([retriever_tool]).invoke(messages)
+
             return {"messages": [response]}
         
         workflow.add_node(generate_query_or_respond)
@@ -88,7 +109,7 @@ class RAGServiceAgentic:
             """Rewrite the original user question."""
             question = state["messages"][0].content
             prompt = REWRITE_QUESTION_TEMPLATE.format(question=question)
-            response = llm_service.llm.invoke([{"role": "user", "content": prompt}])
+            response = llm_service.llm.invoke([HumanMessage(content=prompt)])
             return {"messages": [HumanMessage(content=response.content)]}
         workflow.add_node(rewrite_question)
 
@@ -116,7 +137,7 @@ class RAGServiceAgentic:
             response = (
                 grader_model
                 .with_structured_output(GradeDocuments).invoke(
-                    [{"role": "user", "content": prompt}]
+                    [HumanMessage(content=prompt)]
                 )
             )
 
