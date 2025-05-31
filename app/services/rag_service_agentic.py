@@ -65,11 +65,11 @@ class RAGServiceAgentic:
             """Decide to retrieve, or simply respond to the user.
             Takes all the messages in the state and returns a response."""
 
-            sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=state["messages"][-1].content)
+            last_human_message = state["messages"][-1]
+            sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=last_human_message.content)
 
-            if len(state["messages"]) >= 4:
-                last_human_message = state["messages"][-1]
-                # Invoke the model to generate conversation summary
+            if len(state["messages"]) >= 5:
+                # Invoke the model to summarize the conversation
                 summary_prompt = (
                     "Distill the above chat messages into a single summary message. "
                     "Include as many specific details as you can."
@@ -78,14 +78,16 @@ class RAGServiceAgentic:
                     state["messages"] + [HumanMessage(content=summary_prompt)]
                 )
 
-                # Delete messages that we no longer want to show up
+                # Delete messages that we no longer want to show up (default to entire conversation history)
                 delete_messages = [RemoveMessage(id=m.id) for m in state["messages"]]
 
+                # Generate response based on the summary of the conversation
                 response = llm_service.llm.invoke(
-                    [summary_message, SystemMessage(content=sys_prompt)]
+                    [summary_message, last_human_message, SystemMessage(content=sys_prompt)]
                 )
+                
                 # Return both the response and delete messages as separate items in the messages list
-                return {"messages": [response] + delete_messages}
+                return {"messages": [summary_message, last_human_message, response] + delete_messages}
             else:
                 messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
                 response = llm_service.llm.bind_tools([retriever_tool]).invoke(messages)
