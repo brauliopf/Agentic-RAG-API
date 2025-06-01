@@ -11,6 +11,7 @@ python-dotenv
 gradio
 pypdf
 unstructured[md]
+langchain-pinecone
 
 # Phase 1 dependencies
 pydantic>=2.0.0 # Data validation and settings management using Python type hints.

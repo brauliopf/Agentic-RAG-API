@@ -1,6 +1,8 @@
 from typing import Protocol, runtime_checkable
 from langchain_core.vectorstores import VectorStore, InMemoryVectorStore
 from langchain_core.embeddings import Embeddings
+from pinecone import Pinecone
+from langchain_pinecone import PineconeVectorStore
 
 from ..core.config import settings
 from ..core.logging import get_logger
@@ -44,6 +46,11 @@ def create_vector_store(embeddings: Embeddings) -> VectorStore:
     
     if store_type == "in_memory":
         return InMemoryVectorStore(embeddings)
+    elif store_type == "pinecone":
+        return PineconeVectorStore(
+            index_name=settings.pinecone_index,
+            embedding=embeddings
+        )
     elif store_type == "chroma":
         # Future implementation for Chroma
         try:

@@ -28,9 +28,10 @@ class DocumentService:
         self.documents: Dict[str, Dict[str, Any]] = {}
         logger.info("Initialized DocumentService")
     
-    async def ingest_file(self, file_path: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Ingest a document from a file: load, split, and add to vector store."""
-        doc_id = str(uuid.uuid4())
+    async def ingest_file(self, file_path: str, namespace: Optional[str] = None) -> str:
+        """Ingest a document from a file: load, split, and upsert to vector store in batches."""
+        filename = file_path.split("/")[-1].split(".")[0].lower().replace(" ", "_")
+        doc_id = f"{filename}_{namespace}"
         
         try:
             logger.info("Starting document ingestion", doc_id=doc_id, file_path=file_path)
@@ -41,9 +42,9 @@ class DocumentService:
                 "source_type": "file",
                 "source_file": file_path,
                 "status": DocumentStatus.PROCESSING,
-                "metadata": metadata or {},
                 "created_at": datetime.utcnow(),
-                "chunks_count": 0
+                "chunks_count": 0,
+                "namespace": namespace
             }
 
             # Get file extension and load document accordingly
@@ -61,20 +62,44 @@ class DocumentService:
             # Split documents into chunks
             all_splits = self.text_splitter.split_documents(docs)
             
-            # Add to vector store
-            document_ids = self.vector_store.add_documents(documents=all_splits)
+            # Process documents in batches
+            all_document_ids = []
+            batch_size = settings.batch_size
+            
+            for i in range(0, len(all_splits), batch_size):
+                batch = all_splits[i:i + batch_size]
+                logger.info(
+                    "Processing batch", 
+                    doc_id=doc_id, 
+                    batch_number=i // batch_size + 1,
+                    batch_size=len(batch),
+                    total_batches=(len(all_splits) + batch_size - 1) // batch_size
+                )
+                
+                # Generate unique IDs for each document in the batch
+                batch_ids = [f"{doc_id}_{i + j}" for j in range(len(batch))]
+                
+                # Upsert batch to vector store
+                document_ids = self.vector_store.add_documents(
+                    documents=batch, 
+                    ids=batch_ids,
+                    namespace=namespace
+                )
+                all_document_ids.extend(document_ids)
             
             # Update document status
             self.documents[doc_id].update({
                 "status": DocumentStatus.COMPLETED,
                 "chunks_count": len(all_splits),
-                "vector_ids": document_ids
+                "vector_ids": all_document_ids
             })
             
             logger.info(
                 "Document ingestion completed", 
                 doc_id=doc_id, 
-                chunks_count=len(all_splits)
+                chunks_count=len(all_splits),
+                total_batches=(len(all_splits) + batch_size - 1) // batch_size,
+                namespace=namespace
             )
             
             return doc_id
@@ -86,9 +111,9 @@ class DocumentService:
             raise
             
     
-    async def ingest_url(self, url: str, metadata: Optional[Dict[str, Any]] = None, url_type: Optional[str] = None) -> str:
+    async def ingest_url(self, url: str, url_type: Optional[str] = None, namespace: Optional[str] = None) -> str:
         """Ingest a document from a URL: load, split, and add to vector store."""
-        doc_id = str(uuid.uuid4())
+        doc_id = url
         
         try:
             logger.info("Starting document ingestion", doc_id=doc_id, url=url, url_type=url_type)
@@ -99,9 +124,9 @@ class DocumentService:
                 "source_type": f"url_{url_type}" if url_type else "url",
                 "source_url": url,
                 "status": DocumentStatus.PROCESSING,
-                "metadata": metadata or {},
                 "created_at": datetime.utcnow(),
-                "chunks_count": 0
+                "chunks_count": 0,
+                "namespace": namespace
             }
             
             # Load document using WebBaseLoader with BeautifulSoup parsing
@@ -127,8 +152,15 @@ class DocumentService:
             # Split documents into chunks
             all_splits = self.text_splitter.split_documents(docs)
             
-            # Add to vector store
-            document_ids = self.vector_store.add_documents(documents=all_splits)
+            # Generate unique IDs for each chunk based on the doc_id
+            chunk_ids = [f"{doc_id}_{i}" for i in range(len(all_splits))]
+            
+            # Add to vector store with IDs for upsert behavior
+            document_ids = self.vector_store.add_documents(
+                documents=all_splits, 
+                ids=chunk_ids,
+                namespace=namespace
+            )
             
             # Update document status
             self.documents[doc_id].update({
@@ -140,7 +172,8 @@ class DocumentService:
             logger.info(
                 "Document ingestion completed", 
                 doc_id=doc_id, 
-                chunks_count=len(all_splits)
+                chunks_count=len(all_splits),
+                namespace=namespace
             )
             
             return doc_id

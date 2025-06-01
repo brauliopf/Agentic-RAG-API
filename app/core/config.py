@@ -24,7 +24,9 @@ load_env_file()
 
 
 class Settings(BaseSettings):
-    """Application settings with environment variable support."""
+    """Application settings with environment variable support.
+    *** Settings class automatically maps MY_ENVVAR_KEYS environment variable to settings.my_envvar_key ***
+    """
     
     # API Configuration
     app_name: str = "FastAPI RAG System"
@@ -38,15 +40,19 @@ class Settings(BaseSettings):
     # LLM Configuration
     openai_api_key: Optional[str] = Field(None, description="OpenAI API key")
     openai_model: str = "gpt-4o-mini"
-    
     # Document ingestion (splitting, embedding, and storage)
-    embedding_model: str = "text-embedding-ada-002"
+    embedding_model: str = "text-embedding-3-small" #1536 dimensions
     chunk_size: int = 1000
     chunk_overlap: int = 200
     max_docs_retrieval: int = 4
+    batch_size: int = 100  # Batch size for document ingestion
+
+    # vector store configuration
+    pinecone_api_key: Optional[str] = Field(None, description="Pinecone API key")
+    pinecone_index: str = "clt-tako-rag"
     vector_store_type: str = Field(
-        default="in_memory", 
-        description="Vector store type: in_memory, chroma, faiss"
+        default="pinecone", 
+        description="Vector store type: in_memory, pinecone"
     )
     
     # Logging Configuration
