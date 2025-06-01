@@ -24,6 +24,14 @@ if __name__ == "__main__":
     ]
     for doc in docs:
         asyncio.run(document_service.ingest_url(url=doc, url_type="tako"))
+
+    files = [
+        # "/Users/brauliopf/Documents/Dev/langchain/docs/CLT Normas Correlatas 6th Ed.pdf",
+        # "/Users/brauliopf/Documents/Dev/langchain/docs/test.pdf",
+        "/Users/brauliopf/Documents/Dev/langchain/docs/internal-policies.md",
+    ]
+    for file in files:
+        asyncio.run(document_service.ingest_file(file_path=file))
     
     port = 7860
     demo.launch(server_name="0.0.0.0", server_port=port, share=False)

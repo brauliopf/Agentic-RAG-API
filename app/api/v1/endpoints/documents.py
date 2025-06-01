@@ -65,10 +65,9 @@ async def ingest_documents(
                     detail="Only URL sources are supported currently"
                 )
             
-            doc_id = await document_service.ingest_url(
-                url=req.content,
-                metadata=req.metadata,
-                url_type=req.source_type.split("_")[1]
+            doc_id = await document_service.ingest_file(
+                file_path=req.content,
+                metadata=req.metadata
             )
             
             # Get the document details
