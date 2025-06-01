@@ -23,7 +23,7 @@ if __name__ == "__main__":
         "https://www.usetako.com/politica-de-privacidade",
     ]
     for doc in docs:
-        asyncio.run(document_service.ingest_url_tako(doc))
+        asyncio.run(document_service.ingest_url(url=doc, url_type="tako"))
     
     port = 7860
     demo.launch(server_name="0.0.0.0", server_port=port, share=False)

@@ -59,7 +59,7 @@ async def ingest_documents(
     docs = []
     try:
         for req in request:
-            if req.source_type != "url":
+            if req.source_type.split("_")[0] != "url":
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Only URL sources are supported currently"
@@ -67,7 +67,8 @@ async def ingest_documents(
             
             doc_id = await document_service.ingest_url(
                 url=req.content,
-                metadata=req.metadata
+                metadata=req.metadata,
+                url_type=req.source_type.split("_")[1]
             )
             
             # Get the document details

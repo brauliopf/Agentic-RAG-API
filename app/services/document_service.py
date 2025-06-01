@@ -28,17 +28,17 @@ class DocumentService:
         self.documents: Dict[str, Dict[str, Any]] = {}
         logger.info("Initialized DocumentService")
     
-    async def ingest_url_tako(self, url: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def ingest_url(self, url: str, metadata: Optional[Dict[str, Any]] = None, url_type: Optional[str] = None) -> str:
         """Ingest a document from a URL: load, split, and add to vector store."""
         doc_id = str(uuid.uuid4())
         
         try:
-            logger.info("Starting document ingestion (Tako)", doc_id=doc_id, url=url)
+            logger.info("Starting document ingestion", doc_id=doc_id, url=url, url_type=url_type)
             
             # Store document metadata
             self.documents[doc_id] = {
                 "id": doc_id,
-                "source_type": "url_tako",
+                "source_type": f"url_{url_type}" if url_type else "url",
                 "source_url": url,
                 "status": DocumentStatus.PROCESSING,
                 "metadata": metadata or {},
@@ -48,70 +48,15 @@ class DocumentService:
             
             # Load document using WebBaseLoader with BeautifulSoup parsing
             # Get only content under HTML tags with the following classes (@SoupStrainer)
-            bs4_strainer = bs4.SoupStrainer(
-                class_=("termos-de-uso", "anexo", "header", "wrapper")
-            )
-            loader = WebBaseLoader(
-                web_paths=(url,),
-                bs_kwargs={"parse_only": bs4_strainer}
-            )
-            docs = loader.load()
-            
-            if not docs:
-                raise ValueError("No content could be extracted from URL")
-            
-            # Split documents into chunks
-            all_splits = self.text_splitter.split_documents(docs)
-
-            # Add to vector store
-            document_ids = self.vector_store.add_documents(documents=all_splits)
-            
-            # Update document status
-            self.documents[doc_id].update({
-                "status": DocumentStatus.COMPLETED,
-                "chunks_count": len(all_splits),
-                "vector_ids": document_ids
-            })
-            
-            logger.info(
-                "Document ingestion completed", 
-                doc_id=doc_id, 
-                chunks_count=len(all_splits)
-            )
-            
-            return doc_id
-            
-        except Exception as e:
-            logger.error("Document ingestion failed", doc_id=doc_id, error=str(e))
-            if doc_id in self.documents:
-                self.documents[doc_id]["status"] = DocumentStatus.FAILED
-            raise
-
-
-    
-    async def ingest_url(self, url: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Ingest a document from a URL: load, split, and add to vector store."""
-        doc_id = str(uuid.uuid4())
-        
-        try:
-            logger.info("Starting document ingestion", doc_id=doc_id, url=url)
-            
-            # Store document metadata
-            self.documents[doc_id] = {
-                "id": doc_id,
-                "source_type": "url",
-                "source_url": url,
-                "status": DocumentStatus.PROCESSING,
-                "metadata": metadata or {},
-                "created_at": datetime.utcnow(),
-                "chunks_count": 0
-            }
-            
-            # Load document using WebBaseLoader with BeautifulSoup parsing
-            # Get only content under HTML tags with the following classes (@SoupStrainer)
-            bs4_strainer = bs4.SoupStrainer(
-                class_=("post-content", "post-title", "post-header")
-            )
+            if url_type == "tako":
+                bs4_strainer = bs4.SoupStrainer(
+                    class_=("termos-de-uso", "anexo", "header", "wrapper")
+                )
+            else:
+                bs4_strainer = bs4.SoupStrainer(
+                    class_=("post-content", "post-title", "post-header")
+                )
+                
             loader = WebBaseLoader(
                 web_paths=(url,),
                 bs_kwargs={"parse_only": bs4_strainer}
@@ -124,8 +69,9 @@ class DocumentService:
             # Split documents into chunks
             all_splits = self.text_splitter.split_documents(docs)
             
-            # Add section metadata to chunks
-            self._add_section_metadata(all_splits)
+            # Add section metadata to chunks if not a tako URL
+            if url_type != "tako":
+                self._add_section_metadata(all_splits)
             
             # Add to vector store
             document_ids = self.vector_store.add_documents(documents=all_splits)

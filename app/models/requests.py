@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any, Literal
 
 class DocumentIngestRequest(BaseModel):
     """Request model for document ingestion."""
-    source_type: Literal["url"] = Field(..., description="Type of document source")
+    source_type: Literal["url", "url_tako"] = Field(..., description="Type of document source")
     content: str = Field(..., description="URL to ingest")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
 
