@@ -23,7 +23,7 @@ class VectorStoreProtocol(Protocol):
         ...
 
 
-def create_vector_store(embeddings: Embeddings) -> VectorStore:
+def load_vector_store(embeddings: Embeddings) -> VectorStore:
     """
     Factory function to create a vector store based on configuration.
     

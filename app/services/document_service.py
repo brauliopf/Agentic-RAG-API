@@ -1,59 +1,75 @@
-import uuid
+import bs4
+import tempfile
+import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import bs4
 from langchain_community.document_loaders import WebBaseLoader, PyPDFLoader, UnstructuredMarkdownLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
-
+from fastapi import UploadFile
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..models.responses import DocumentStatus
 from .llm_service import llm_service
-from .vector_store_factory import create_vector_store
+from .vector_store_factory import load_vector_store
 
 logger = get_logger(__name__)
 
 
 class DocumentService:
-    """Service for managing document ingestion and storage."""
+    """Service for managing document ingestion and storage in the vector store."""
     
     def __init__(self):
-        self.vector_store = create_vector_store(llm_service.embeddings)
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
             add_start_index=True
         )
-        self.documents: Dict[str, Dict[str, Any]] = {}
+        self.vector_store = load_vector_store(llm_service.embeddings)
+        self.documents: Dict[str, Dict[str, Any]] = {
+            'CLT Normas Correlatas 6th Ed.pdf': {
+                'id': 'CLT Normas Correlatas 6th Ed.pdf',
+                'source_type': 'file',
+                'source_file': 'CLT Normas Correlatas 6th Ed.pdf',
+                'status': DocumentStatus.COMPLETED,
+                'created_at': datetime.utcnow(),
+            }
+        }
         logger.info("Initialized DocumentService")
-    
-    async def ingest_file(self, file_path: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Ingest a document from a file: load, split, and upsert to vector store in batches."""
-        filename = file_path.split("/")[-1].split(".")[0].lower().replace(" ", "_")
-        doc_id = f"{filename}"
+
+    async def ingest_file(self, file_content: UploadFile, metadata: Optional[Dict[str, Any]] = None) -> str:
+        """Ingest a document from a file uploaded by the user: load, split, and upsert to vector store in batches."""
+        doc_id = file_content.filename
+        temp_file_path = None
         
         try:
-            logger.info("Starting document ingestion", doc_id=doc_id, file_path=file_path)
+            logger.info("Starting document ingestion", source_type="file", doc_id=doc_id)
 
             # Store document metadata
             self.documents[doc_id] = {
                 "id": doc_id,
                 "source_type": "file",
-                "source_file": file_path,
                 "status": DocumentStatus.PROCESSING,
                 "created_at": datetime.utcnow(),
                 "chunks_count": 0,
                 "metadata": metadata
             }
 
-            # Get file extension and load document accordingly
-            file_extension = file_path.lower().split('.')[-1]
+            # Get file extension and create temporary file
+            file_extension = file_content.filename.lower().split('.')[-1]
             
+            # Create a temporary file to save the uploaded content
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as temp_file:
+                temp_file_path = temp_file.name
+                # Read and write the uploaded file content to the temporary file
+                content = await file_content.read()
+                temp_file.write(content)
+                temp_file.flush()
+            
+            # Load document based on file type using the temporary file path
             if file_extension == 'pdf':
-                loader = PyPDFLoader(file_path)
+                loader = PyPDFLoader(temp_file_path)
             elif file_extension == 'md':
-                loader = UnstructuredMarkdownLoader(file_path)
+                loader = UnstructuredMarkdownLoader(temp_file_path)
             else:
                 raise ValueError(f"Unsupported file type: {file_extension}")
                 
@@ -109,19 +125,26 @@ class DocumentService:
             if doc_id in self.documents:
                 self.documents[doc_id]["status"] = DocumentStatus.FAILED
             raise
-            
-    async def ingest_url(self, url: str, url_type: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> str:
+        finally:
+            # Clean up temporary file
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                    logger.debug("Cleaned up temporary file", temp_file_path=temp_file_path)
+                except Exception as cleanup_error:
+                    logger.warning("Failed to clean up temporary file", temp_file_path=temp_file_path, error=str(cleanup_error))
+
+    async def ingest_url(self, url: str, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Ingest a document from a URL: load, split, and add to vector store."""
         doc_id = url
         
         try:
-            logger.info("Starting document ingestion", doc_id=doc_id, url=url, url_type=url_type)
+            logger.info("Starting document ingestion", source_type="url", doc_id=doc_id, url=url)
             
             # Store document metadata
             self.documents[doc_id] = {
                 "id": doc_id,
-                "source_type": f"url_{url_type}" if url_type else "url",
-                "source_url": url,
+                "source_type": "url",
                 "status": DocumentStatus.PROCESSING,
                 "created_at": datetime.utcnow(),
                 "chunks_count": 0,
@@ -130,14 +153,9 @@ class DocumentService:
             
             # Load document using WebBaseLoader with BeautifulSoup parsing
             # Get only content under HTML tags with the following classes (@SoupStrainer)
-            if url_type == "tako":
-                bs4_strainer = bs4.SoupStrainer(
-                    class_=("termos-de-uso", "anexo", "header", "wrapper")
-                )
-            else:
-                bs4_strainer = bs4.SoupStrainer(
-                    class_=("post-content", "post-title", "post-header")
-                )
+            bs4_strainer = bs4.SoupStrainer(
+                class_=("termos-de-uso", "anexo", "header", "wrapper")
+            )
                 
             loader = WebBaseLoader(
                 web_paths=(url,),
@@ -184,12 +202,14 @@ class DocumentService:
             raise
     
     async def get_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
-        """Get document metadata by ID."""
+        """Get document metadata (file or URL) by ID."""
         return self.documents.get(doc_id)
     
     async def list_documents(self) -> List[Dict[str, Any]]:
         """List all ingested documents."""
-        return list(self.documents.values())
+        # Default docs: CLT and Tako API
+        docs = list(self.documents.values())
+        return docs
 
 
 # Global service instance

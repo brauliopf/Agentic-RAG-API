@@ -14,6 +14,9 @@ class LLMService:
         self._llm: Optional[ChatOpenAI] = None
         self._embeddings: Optional[OpenAIEmbeddings] = None
     
+    # Lazt-loading. _llm variable inits as None, so the first time llm is called, it will be created.
+    # After that, it will return the cached instance.
+    # @property decorator will make the llm method callable as an attribute, not as a function.
     @property
     def llm(self) -> ChatOpenAI:
         """Get or create the LLM instance."""

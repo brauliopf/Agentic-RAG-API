@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -15,9 +15,9 @@ class DocumentStatus(str, Enum):
 class DocumentResponse(BaseModel):
     """Response model for document operations."""
     id: str = Field(..., description="Unique document identifier")
-    source_type: str = Field(..., description="Type of document source")
+    source_type: Literal["url", "file"] = Field(..., description="Type of document source")
     status: DocumentStatus = Field(..., description="Processing status")
-    metadata: Dict[str, Any] = Field(..., description="Document metadata")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Document metadata")
     created_at: datetime = Field(..., description="Creation timestamp")
 
 

@@ -1,11 +1,17 @@
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, Dict, Any, Literal
+from fastapi import UploadFile, File
+
+
+class URLIngestRequest(BaseModel):
+    """Request model for URL ingestion."""
+    url: str = Field(default=None, description="URL to ingest")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
 
 
 class DocumentIngestRequest(BaseModel):
-    """Request model for document ingestion."""
-    source_type: Literal["url", "url_tako"] = Field(..., description="Type of document source")
-    content: str = Field(..., description="URL to ingest")
+    """Request model for document ingestion. Document can be a URL (webpage) or a file (PDF or markdown)."""
+    file_content: UploadFile = File(default=None, description="File to ingest")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
 
 
