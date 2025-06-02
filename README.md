@@ -4,11 +4,16 @@ x Implement persistent vector database configuration (Pinecone)
 x Add metadata to documents in the vector store
 
 - Create UI
+  . /rag/admin: manage documents
+  . /rag: chat feature
 
+- refactor ingest_documents_tako and ingest_documents
 - Embed Tako API
 - Tell the model it represents Tako! Instruct it to check how to use Tako to do things before creating an answer.
 - Get sources from vector store retrieval
 - User reports a problem
+- Refactor ingest_documents
+- secure API
 
 - Hide PII on customer message
 - Add authentication and authorization (Supabase)

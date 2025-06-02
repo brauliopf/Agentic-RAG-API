@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 
 from ....models.requests import DocumentIngestRequest
-from ....models.responses import DocumentResponse, ErrorResponse
+from ....models.responses import DocumentResponse
 from ....services.document_service import DocumentService
 from ....core.logging import get_logger
 from ...deps import get_document_service

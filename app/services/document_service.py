@@ -10,7 +10,7 @@ from ..core.config import settings
 from ..core.logging import get_logger
 from ..models.responses import DocumentStatus
 from .llm_service import llm_service
-from .vector_store_factory import create_vector_store, get_supported_vector_stores
+from .vector_store_factory import create_vector_store
 
 logger = get_logger(__name__)
 
@@ -28,10 +28,10 @@ class DocumentService:
         self.documents: Dict[str, Dict[str, Any]] = {}
         logger.info("Initialized DocumentService")
     
-    async def ingest_file(self, file_path: str, namespace: Optional[str] = None) -> str:
+    async def ingest_file(self, file_path: str, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Ingest a document from a file: load, split, and upsert to vector store in batches."""
         filename = file_path.split("/")[-1].split(".")[0].lower().replace(" ", "_")
-        doc_id = f"{filename}_{namespace}"
+        doc_id = f"{filename}"
         
         try:
             logger.info("Starting document ingestion", doc_id=doc_id, file_path=file_path)
@@ -44,7 +44,7 @@ class DocumentService:
                 "status": DocumentStatus.PROCESSING,
                 "created_at": datetime.utcnow(),
                 "chunks_count": 0,
-                "namespace": namespace
+                "metadata": metadata
             }
 
             # Get file extension and load document accordingly
@@ -83,7 +83,7 @@ class DocumentService:
                 document_ids = self.vector_store.add_documents(
                     documents=batch, 
                     ids=batch_ids,
-                    namespace=namespace
+                    metadata=metadata
                 )
                 all_document_ids.extend(document_ids)
             
@@ -99,7 +99,7 @@ class DocumentService:
                 doc_id=doc_id, 
                 chunks_count=len(all_splits),
                 total_batches=(len(all_splits) + batch_size - 1) // batch_size,
-                namespace=namespace
+                metadata=metadata
             )
             
             return doc_id
@@ -110,8 +110,7 @@ class DocumentService:
                 self.documents[doc_id]["status"] = DocumentStatus.FAILED
             raise
             
-    
-    async def ingest_url(self, url: str, url_type: Optional[str] = None, namespace: Optional[str] = None) -> str:
+    async def ingest_url(self, url: str, url_type: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Ingest a document from a URL: load, split, and add to vector store."""
         doc_id = url
         
@@ -126,7 +125,7 @@ class DocumentService:
                 "status": DocumentStatus.PROCESSING,
                 "created_at": datetime.utcnow(),
                 "chunks_count": 0,
-                "namespace": namespace
+                "metadata": metadata
             }
             
             # Load document using WebBaseLoader with BeautifulSoup parsing
@@ -159,7 +158,7 @@ class DocumentService:
             document_ids = self.vector_store.add_documents(
                 documents=all_splits, 
                 ids=chunk_ids,
-                namespace=namespace
+                metadata=metadata
             )
             
             # Update document status
@@ -173,7 +172,7 @@ class DocumentService:
                 "Document ingestion completed", 
                 doc_id=doc_id, 
                 chunks_count=len(all_splits),
-                namespace=namespace
+                metadata=metadata
             )
             
             return doc_id
@@ -184,19 +183,6 @@ class DocumentService:
                 self.documents[doc_id]["status"] = DocumentStatus.FAILED
             raise
     
-    def _add_section_metadata(self, documents: List[Document]) -> None:
-        """Add section metadata to document chunks."""
-        total_documents = len(documents)
-        third = total_documents // 3
-        
-        for i, document in enumerate(documents):
-            if i < third:
-                document.metadata["section"] = "beginning"
-            elif i < 2 * third:
-                document.metadata["section"] = "middle"
-            else:
-                document.metadata["section"] = "end"
-    
     async def get_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
         """Get document metadata by ID."""
         return self.documents.get(doc_id)
@@ -204,38 +190,6 @@ class DocumentService:
     async def list_documents(self) -> List[Dict[str, Any]]:
         """List all ingested documents."""
         return list(self.documents.values())
-    
-    async def delete_document(self, doc_id: str) -> bool:
-        """Delete a document and its chunks from the vector store."""
-        try:
-            if doc_id not in self.documents:
-                return False
-            
-            # Note: Some vector stores don't support deletion by ID
-            # This is a limitation that varies by vector store implementation
-            logger.warning(
-                "Document deletion may not be fully supported by current vector store", 
-                doc_id=doc_id,
-                vector_store_type=settings.vector_store_type
-            )
-            
-            # Remove from our tracking
-            del self.documents[doc_id]
-            logger.info("Document removed from tracking", doc_id=doc_id)
-            
-            return True
-            
-        except Exception as e:
-            logger.error("Failed to delete document", doc_id=doc_id, error=str(e))
-            return False
-
-    def get_vector_store_info(self) -> Dict[str, Any]:
-        """Get information about the current vector store configuration."""
-        return {
-            "type": settings.vector_store_type,
-            "supported_types": get_supported_vector_stores(),
-            "class_name": self.vector_store.__class__.__name__
-        }
 
 
 # Global service instance

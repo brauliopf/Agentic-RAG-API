@@ -12,9 +12,8 @@ class DocumentIngestRequest(BaseModel):
 class QueryRequest(BaseModel):
     """Request model for RAG queries."""
     question: str = Field(..., description="The question to ask")
-    max_docs: Optional[int] = Field(default=None, description="The maximum number of documents to retrieve")
-    section_filter: Optional[Literal["beginning", "middle", "end"]] = Field(default=None, description="The section of the document to filter")
     thread_id: Optional[str] = Field(default=None, description="The thread ID to use for the query")
+    use_agentic: bool = Field(default=False, description="Whether to use agentic mode")
 
 
 class GradeDocuments(BaseModel):

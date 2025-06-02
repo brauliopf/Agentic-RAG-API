@@ -33,7 +33,6 @@ class RAGServiceAgentic:
             # If the doc grader says the content is good, then the next node does not allow for retrieval, it's got to answer!
             # Thus, the quality of the grader model is critical.
             self.graph = self._build_graph()
-            logger.info("Agentic RAG pipeline initialized successfully")
             # Save graph visualization to file
             graph_png = self.graph.get_graph().draw_mermaid_png()
             with open("./app/services/graphs/graph_agentic.png", "wb") as f:
@@ -51,8 +50,8 @@ class RAGServiceAgentic:
         retriever = document_service.vector_store.as_retriever()
         retriever_tool = create_retriever_tool(
             retriever,
-            "retrieve_blog_posts",
-            "Search and return information about Lilian Weng blog posts.",
+            "retrieve_knowledge_base",
+            "Search and return information from a knowledge base.",
         )
 
         # 2. Get graph builder
@@ -162,8 +161,6 @@ class RAGServiceAgentic:
     async def query(
         self, 
         question: str,
-        max_docs: Optional[int] = None,
-        section_filter: Optional[Literal["beginning", "middle", "end"]] = None,
         thread_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Process a RAG query and return the result."""

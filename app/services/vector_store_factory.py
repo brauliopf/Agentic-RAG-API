@@ -43,40 +43,26 @@ def create_vector_store(embeddings: Embeddings) -> VectorStore:
     store_type = settings.vector_store_type.lower()
     
     logger.info("Creating vector store", store_type=store_type)
-    
+
     if store_type == "in_memory":
         return InMemoryVectorStore(embeddings)
     elif store_type == "pinecone":
-        return PineconeVectorStore(
-            index_name=settings.pinecone_index,
-            embedding=embeddings
-        )
-    elif store_type == "chroma":
-        # Future implementation for Chroma
         try:
-            from langchain_chroma import Chroma
-            return Chroma(embedding_function=embeddings)
-        except ImportError:
-            logger.error("Chroma not installed. Install with: pip install langchain-chroma")
-            raise ValueError("Chroma vector store requires langchain-chroma package")
-    elif store_type == "faiss":
-        # Future implementation for FAISS
-        try:
-            from langchain_community.vectorstores import FAISS
-            # FAISS requires an index to be created with documents
-            # For now, we'll create an empty index and let the service add documents
-            import faiss
-            import numpy as np
+            if not settings.pinecone_api_key:
+                raise ValueError("PINECONE_API_KEY is required for Pinecone vector store")
             
-            # Create a placeholder index - will be properly initialized when documents are added
-            dimension = 1536  # OpenAI embedding dimension
-            index = faiss.IndexFlatL2(dimension)
-            return FAISS(embeddings, index, {}, {})
-        except ImportError:
-            logger.error("FAISS not installed. Install with: pip install faiss-cpu")
-            raise ValueError("FAISS vector store requires faiss-cpu package")
+            vector_store = PineconeVectorStore(
+                index_name=settings.pinecone_index,
+                embedding=embeddings,
+                pinecone_api_key=settings.pinecone_api_key
+            )
+            logger.info("Successfully created Pinecone vector store", index_name=settings.pinecone_index)
+            return vector_store
+        except Exception as e:
+            logger.error("Failed to create Pinecone vector store", error=str(e))
+            raise
     else:
-        supported_types = ["in_memory", "chroma", "faiss"]
+        supported_types = ["in_memory", "pinecone"]
         error_msg = f"Unsupported vector store type: {store_type}. Supported types: {supported_types}"
         logger.error(error_msg)
         raise ValueError(error_msg)
