@@ -11,7 +11,7 @@ from ..core.logging import get_logger
 from ..models.document import Document, DocumentStatus, DocumentUpdate
 from .llm_service import llm_service
 from .vector_store_factory import load_vector_store
-from pinecone.grpc import PineconeGRPC as Pinecone
+from pinecone import Pinecone
 
 logger = get_logger(__name__)
 
