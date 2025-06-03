@@ -1,5 +1,6 @@
 import uuid
 import time
+import json
 
 from langgraph.graph import START, StateGraph
 from typing import Dict, Any, Optional, Literal
@@ -108,10 +109,24 @@ class RAGServiceAgentic:
         # 4. Node to rewrite the question
         def rewrite_question(state: MessagesState):
             """Rewrite the original user question."""
-            question = state["messages"][0].content
+            old_question = state["messages"][0].content
+
+            # Get the last human input before the retriever_node
+            question = None
+            for message in reversed(state["messages"]):
+                if isinstance(message, HumanMessage):
+                    question = message.content
+                    break
+
+            print("\nREWRITE QUESTION!!!\n")
             prompt = REWRITE_QUESTION_TEMPLATE.format(question=question)
             response = llm_service.llm.invoke([HumanMessage(content=prompt)])
-            return {"messages": [HumanMessage(content=response.content)]}
+            print("\n\nResponse!!! -> ", response)
+            response_json = json.loads(response.content)
+            
+            # Add the rewritten question to the existing messages
+            rewritten_question = HumanMessage(content=response_json["question"])
+            return {"messages": [rewritten_question]}
         workflow.add_node(rewrite_question)
 
         def generate_answer(state: MessagesState):
@@ -131,7 +146,15 @@ class RAGServiceAgentic:
             state: MessagesState,
         ) -> Literal["generate_answer", "rewrite_question"]:
             """Determine whether the retrieved documents are relevant to the question."""
-            question = state["messages"][0].content
+            oldquestion = state["messages"][0].content
+            
+            # Get the last human input before the retriever_node
+            question = None
+            for message in reversed(state["messages"]):
+                if isinstance(message, HumanMessage):
+                    question = message.content
+                    break
+            
             context = state["messages"][-1].content
 
             prompt = GRADE_DOCUMENTS_TEMPLATE.format(question=question, context=context)

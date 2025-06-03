@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from typing import List, Optional, Dict, Any
 import json
 
-from ....models.requests import URLIngestRequest, DocumentIngestRequest, DocumentDeleteRequest
+from ....models.requests import URLIngestRequest, DocumentDeleteRequest, DocumentDescribeRequest
 from ....models.responses import DocumentResponse
 from ....services.document_service import DocumentService
 from ....core.logging import get_logger
@@ -106,6 +106,27 @@ async def get_document(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get document: {str(e)}"
+        )
+
+
+@router.post("/documents/describe", response_model=None)
+async def describe_documents(
+    request: DocumentDescribeRequest,
+    document_service: DocumentService = Depends(get_document_service)
+):
+    """Describe a list of documents with title and description.
+    This takes a dictionary of document title and description and updates the documents object in the document service.
+    Returns nothing."""
+    try:
+        return None
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Document creation failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Document creation failed: {str(e)}"
         )
 
 

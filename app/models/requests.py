@@ -9,11 +9,9 @@ class URLIngestRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
 
 
-class DocumentIngestRequest(BaseModel):
-    """Request model for document ingestion. Document can be a URL (webpage) or a file (PDF or markdown)."""
-    file_content: UploadFile = File(default=None, description="File to ingest")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
-
+class DocumentDescribeRequest(BaseModel):
+    """Request model for document description."""
+    documents: Dict[str, Any] = Field(..., description="The document title and description to be provided to the retriever LLM")
 
 class DocumentDeleteRequest(BaseModel):
     """Request model for document deletion."""
