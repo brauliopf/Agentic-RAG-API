@@ -146,14 +146,20 @@ class DocumentService:
             
             # Load document using WebBaseLoader with BeautifulSoup parsing
             # Get only content under HTML tags with the following classes (@SoupStrainer)
-            bs4_strainer = bs4.SoupStrainer(
-                class_=("termos-de-uso", "anexo", "header", "wrapper")
-            )
-                
-            loader = WebBaseLoader(
-                web_paths=(url,),
-                bs_kwargs={"parse_only": bs4_strainer}
-            )
+            target_classes = metadata.get("classes")
+
+            if target_classes:
+                bs4_strainer = bs4.SoupStrainer(
+                    class_=target_classes.split(",")
+                )
+                loader = WebBaseLoader(
+                    web_paths=(url,),
+                    bs_kwargs={"parse_only": bs4_strainer}
+                )
+            else:
+                loader = WebBaseLoader(
+                    web_paths=(url,)
+                )
             docs = loader.load()
             
             if not docs:
