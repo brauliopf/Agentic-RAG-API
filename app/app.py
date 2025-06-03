@@ -25,7 +25,7 @@ if __name__ == "__main__":
         ("https://www.usetako.com/politica-de-privacidade","tako"),
     ]
     for doc in docs:
-        asyncio.run(document_service.ingest_url(url=doc[0], url_type=doc[1]))
+        asyncio.run(document_service.ingest_url(url=doc[0]))
 
     files = [
         # ("/Users/brauliopf/Documents/Dev/langchain/docs/CLT Normas Correlatas 6th Ed.pdf","labor_rules")

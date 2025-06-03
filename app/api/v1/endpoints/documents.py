@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from typing import List, Optional, Dict, Any
 import json
 
-from ....models.requests import URLIngestRequest, DocumentIngestRequest
+from ....models.requests import URLIngestRequest, DocumentIngestRequest, DocumentDeleteRequest
 from ....models.responses import DocumentResponse
 from ....services.document_service import DocumentService
 from ....core.logging import get_logger
@@ -19,6 +19,7 @@ async def ingest_urls(
 ):
     """Ingest documents from a list of URLs (url) or from a file (pdf, md) uploaded by the user. Returns the a list of retrieved documents."""
     docs = []
+    print("INGEST URLS", urls)
     try:
         for url in urls:
             doc_id = await document_service.ingest_url(
@@ -122,4 +123,20 @@ async def list_documents(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list documents: {str(e)}"
+        )
+    
+@router.post("/documents/delete")
+async def delete_document(
+    request: DocumentDeleteRequest,
+    document_service: DocumentService = Depends(get_document_service)
+):
+    """Delete a specific document by ID."""
+    try:
+        await document_service.delete_document(request.doc_id)
+        return {"message": "Document deleted successfully", "doc_id": request.doc_id}
+    except Exception as e:
+        logger.error("Failed to delete document", doc_id=request.doc_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete document: {str(e)}"
         )

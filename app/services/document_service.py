@@ -11,6 +11,7 @@ from ..core.logging import get_logger
 from ..models.responses import DocumentStatus
 from .llm_service import llm_service
 from .vector_store_factory import load_vector_store
+from pinecone.grpc import PineconeGRPC as Pinecone
 
 logger = get_logger(__name__)
 
@@ -25,15 +26,7 @@ class DocumentService:
             add_start_index=True
         )
         self.vector_store = load_vector_store(llm_service.embeddings)
-        self.documents: Dict[str, Dict[str, Any]] = {
-            'CLT Normas Correlatas 6th Ed.pdf': {
-                'id': 'CLT Normas Correlatas 6th Ed.pdf',
-                'source_type': 'file',
-                'source_file': 'CLT Normas Correlatas 6th Ed.pdf',
-                'status': DocumentStatus.COMPLETED,
-                'created_at': datetime.utcnow(),
-            }
-        }
+        self.documents = {}
         logger.info("Initialized DocumentService")
 
     async def ingest_file(self, file_content: UploadFile, metadata: Optional[Dict[str, Any]] = None) -> str:
@@ -176,7 +169,6 @@ class DocumentService:
             document_ids = self.vector_store.add_documents(
                 documents=all_splits, 
                 ids=chunk_ids,
-                metadata=metadata
             )
             
             # Update document status
@@ -210,6 +202,49 @@ class DocumentService:
         # Default docs: CLT and Tako API
         docs = list(self.documents.values())
         return docs
+    
+    async def delete_document(self, doc_id: str):
+        """Delete a document by ID."""
+        try:
+            # Get all ids in pinecone
+            pc = Pinecone(api_key=settings.pinecone_api_key)
+
+            # To get the unique host for an index, 
+            # see https://docs.pinecone.io/guides/manage-data/target-an-index
+            index = pc.Index(host="https://clt-tako-rag-kueduco.svc.aped-4627-b74a.pinecone.io")
+
+            # Collect all IDs with the document prefix
+            all_ids = []
+            try:
+                # The list() method returns an iterator where each iteration yields a list of ID strings
+                for ids_batch in index.list(prefix=doc_id, namespace=''):
+                    # ids_batch is a list of ID strings, so we extend our all_ids list
+                    all_ids.extend(ids_batch)
+                
+                logger.info(f"Found {len(all_ids)} vectors to delete for document", doc_id=doc_id)
+                
+                # Only delete if we found IDs
+                if all_ids:
+                    # Delete all ids in pinecone
+                    index.delete(ids=all_ids, namespace='')
+                    logger.info(f"Deleted {len(all_ids)} vectors from Pinecone", doc_id=doc_id)
+                else:
+                    logger.warning("No vectors found in Pinecone for document", doc_id=doc_id)
+                    
+            except Exception as pinecone_error:
+                logger.error("Failed to delete vectors from Pinecone", doc_id=doc_id, error=str(pinecone_error))
+                # Continue with local cleanup even if Pinecone deletion fails
+            
+            # Delete document from documents dict
+            if doc_id in self.documents:
+                del self.documents[doc_id]
+                logger.info("Document deleted from local storage", doc_id=doc_id)
+            else:
+                logger.warning("Document not found in local storage", doc_id=doc_id)
+                
+        except Exception as e:
+            logger.error("Document deletion failed", doc_id=doc_id, error=str(e))
+            raise
 
 
 # Global service instance

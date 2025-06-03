@@ -15,6 +15,11 @@ class DocumentIngestRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
 
 
+class DocumentDeleteRequest(BaseModel):
+    """Request model for document deletion."""
+    doc_id: str = Field(..., description="The document ID to delete")
+
+
 class QueryRequest(BaseModel):
     """Request model for RAG queries."""
     question: str = Field(..., description="The question to ask")
