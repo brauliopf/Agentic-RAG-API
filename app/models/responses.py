@@ -2,14 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Literal
 from datetime import datetime
 from enum import Enum
-
-
-class DocumentStatus(str, Enum):
-    """Document processing status."""
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
+from .document import DocumentStatus
 
 
 class DocumentResponse(BaseModel):
@@ -19,6 +12,9 @@ class DocumentResponse(BaseModel):
     status: DocumentStatus = Field(..., description="Processing status")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Document metadata")
     created_at: datetime = Field(..., description="Creation timestamp")
+    chunks_count: int = Field(default=0, description="Number of chunks created from this document")
+    description: Optional[str] = Field(None, description="Human-readable description of the document")
+    vector_ids: Optional[List[str]] = Field(default_factory=list, description="Vector store IDs for document chunks")
 
 
 class QueryResponse(BaseModel):

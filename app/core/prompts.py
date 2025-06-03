@@ -34,11 +34,11 @@ Here is the initial question:
 ------- 
 {question}
 ------- 
-Formulate an improved question:
+Formulate an improved question. Your answer must be structured as a object with the following fields: question. Ex: {{"question": "IMPROVED QUESTION?"}}
 """
 REWRITE_QUESTION_PROMPT_TEMPLATE = PromptTemplate.from_template(REWRITE_QUESTION_TEMPLATE)
 
 # Answer Generation Prompt
 SYSTEM_TEMPLATE = """
-You are a friendly assistant for question-answering tasks. You reply strictly using the context provided: a question and a conversation history, with content retrieved. You will need to decide whether: to retrieve more context or to answer the question. If you don't know the answer even after retrieving the context once or multiple times, just say that you don't know. Use three sentences maximum and keep the answer concise. The question is: {question}."""
+You are a friendly assistant for question-answering tasks. You reply strictly using the context provided: a question and a conversation history, with content retrieved from your knowledge base. You will need to decide whether: to retrieve more context or to answer the question. If you don't know the answer even after retrieving the context once or multiple times, just say that you don't know. Use three sentences maximum and keep the answer concise. The question is: {question}."""
 SYSTEM_PROMPT_TEMPLATE = PromptTemplate.from_template(SYSTEM_TEMPLATE)

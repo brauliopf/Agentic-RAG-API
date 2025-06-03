@@ -6,13 +6,17 @@ from fastapi import UploadFile, File
 class URLIngestRequest(BaseModel):
     """Request model for URL ingestion."""
     url: str = Field(default=None, description="URL to ingest")
+    description: Optional[str] = Field(None, description="Human-readable description of the document")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
 
 
-class DocumentIngestRequest(BaseModel):
-    """Request model for document ingestion. Document can be a URL (webpage) or a file (PDF or markdown)."""
-    file_content: UploadFile = File(default=None, description="File to ingest")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
+class DocumentDescribeRequest(BaseModel):
+    """Request model for document description."""
+    documents: Dict[str, Any] = Field(..., description="The document title and description to be provided to the retriever LLM")
+
+class DocumentDeleteRequest(BaseModel):
+    """Request model for document deletion."""
+    doc_id: str = Field(..., description="The document ID to delete")
 
 
 class QueryRequest(BaseModel):
@@ -26,4 +30,10 @@ class GradeDocuments(BaseModel):
     """Grade documents using a binary score for relevance check."""
     binary_score: str = Field(
         description="Relevance score: 'yes' if relevant, or 'no' if not relevant"
-    ) 
+    )
+
+
+class DocumentUpdateRequest(BaseModel):
+    """Request model for document updates."""
+    description: Optional[str] = Field(None, description="Human-readable description of the document")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional document metadata") 
