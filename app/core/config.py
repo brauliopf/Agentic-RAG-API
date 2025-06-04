@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     
+    # Authentication Configuration
+    supabase_url: str = "https://zxwfmrccjrbejqxmmxrw.supabase.co"
+    supabase_jwt_secret: Optional[str] = Field(None, description="Supabase JWT secret for token verification")
+    
     # LLM Configuration
     openai_api_key: Optional[str] = Field(None, description="OpenAI API key")
     openai_model: str = "gpt-4o-mini"

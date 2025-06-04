@@ -188,7 +188,8 @@ class RAGServiceAgentic:
     async def query(
         self, 
         question: str,
-        thread_id: Optional[str] = None
+        user_id: str,
+        thread_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Process a RAG query and return the result."""
         query_id = str(uuid.uuid4())
@@ -198,7 +199,7 @@ class RAGServiceAgentic:
             thread_id = f"query_{query_id}"
         
         try:
-            logger.info("Starting RAG query", query_id=query_id, question=question, thread_id=thread_id)
+            logger.info("Starting RAG query", query_id=query_id, question=question, thread_id=thread_id, user_id=user_id)
             
             # Create config with thread_id for session persistence
             config = {"configurable": {"thread_id": thread_id}}
