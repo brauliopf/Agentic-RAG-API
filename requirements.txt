@@ -16,4 +16,4 @@ pydantic>=2.0.0 # Data validation and settings management using Python type hint
 pydantic-settings>=2.0.0
 structlog>=23.0.0
 typing-extensions>=4.0.0 # Enhance Python's type hinting capabilities with access to new type hinting features before they are officially supported in the language.
-jwt
+PyJWT
