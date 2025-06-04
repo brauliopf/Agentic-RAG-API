@@ -25,17 +25,25 @@ class DocumentService:
             chunk_overlap=settings.chunk_overlap,
             add_start_index=True
         )
-        self.vector_store = load_vector_store(llm_service.embeddings)
+        # Cache for user-specific vector stores
+        self._vector_stores: Dict[str, Any] = {}
         self.documents: Dict[str, Document] = {}
         logger.info("Initialized DocumentService")
 
-    async def ingest_file(self, file_content: UploadFile, metadata: Optional[Dict[str, Any]] = None, description: Optional[str] = None) -> str:
+    def _get_vector_store(self, user_id: str):
+        """Get or create a user-specific vector store instance."""
+        if user_id not in self._vector_stores:
+            self._vector_stores[user_id] = load_vector_store(llm_service.embeddings, user_id)
+            logger.info("Created user-specific vector store", user_id=user_id)
+        return self._vector_stores[user_id]
+
+    async def ingest_file(self, file_content: UploadFile, user_id: str, metadata: Optional[Dict[str, Any]] = None, description: Optional[str] = None) -> str:
         """Ingest a document from a file uploaded by the user: load, split, and upsert to vector store in batches."""
         doc_id = file_content.filename
         temp_file_path = None
         
         try:
-            logger.info("Starting document ingestion", source_type="file", doc_id=doc_id)
+            logger.info("Starting document ingestion", source_type="file", doc_id=doc_id, user_id=user_id)
 
             # Store document metadata using the Document model
             document = Document(
@@ -85,14 +93,15 @@ class DocumentService:
                     doc_id=doc_id, 
                     batch_number=i // batch_size + 1,
                     batch_size=len(batch),
-                    total_batches=(len(all_splits) + batch_size - 1) // batch_size
+                    total_batches=(len(all_splits) + batch_size - 1) // batch_size,
+                    user_id=user_id
                 )
                 
                 # Generate unique IDs for each document in the batch
                 batch_ids = [f"{doc_id}_{i + j}" for j in range(len(batch))]
                 
-                # Upsert batch to vector store
-                document_ids = self.vector_store.add_documents(
+                # Upsert batch to vector store using user-specific vector store
+                document_ids = self._get_vector_store(user_id).add_documents(
                     documents=batch, 
                     ids=batch_ids,
                     metadata=metadata
@@ -109,13 +118,14 @@ class DocumentService:
                 doc_id=doc_id, 
                 chunks_count=len(all_splits),
                 total_batches=(len(all_splits) + batch_size - 1) // batch_size,
-                metadata=metadata
+                metadata=metadata,
+                user_id=user_id
             )
             
             return doc_id
             
         except Exception as e:
-            logger.error("Document ingestion failed", doc_id=doc_id, error=str(e))
+            logger.error("Document ingestion failed", doc_id=doc_id, user_id=user_id, error=str(e))
             if doc_id in self.documents:
                 self.documents[doc_id].status = DocumentStatus.FAILED
             raise
@@ -128,12 +138,12 @@ class DocumentService:
                 except Exception as cleanup_error:
                     logger.warning("Failed to clean up temporary file", temp_file_path=temp_file_path, error=str(cleanup_error))
 
-    async def ingest_url(self, url: str, metadata: Optional[Dict[str, Any]] = None, description: Optional[str] = None) -> str:
+    async def ingest_url(self, url: str, user_id: str, metadata: Optional[Dict[str, Any]] = None, description: Optional[str] = None) -> str:
         """Ingest a document from a URL: load, split, and add to vector store."""
         doc_id = url
         
         try:
-            logger.info("Starting document ingestion", source_type="url", doc_id=doc_id, url=url)
+            logger.info("Starting document ingestion", source_type="url", doc_id=doc_id, url=url, user_id=user_id)
             
             # Store document metadata using the Document model
             document = Document(
@@ -175,10 +185,10 @@ class DocumentService:
             # Generate unique IDs for each chunk based on the doc_id
             chunk_ids = [f"{doc_id}_{i}" for i in range(len(all_splits))]
             
-            # Add to vector store with IDs for upsert behavior
-            document_ids = self.vector_store.add_documents(
+            # Add to vector store with IDs for upsert behavior using user-specific vector store
+            document_ids = self._get_vector_store(user_id).add_documents(
                 documents=all_splits, 
-                ids=chunk_ids,
+                ids=chunk_ids
             )
             
             # Update document status
@@ -190,13 +200,14 @@ class DocumentService:
                 "Document ingestion completed", 
                 doc_id=doc_id, 
                 chunks_count=len(all_splits),
-                metadata=metadata
+                metadata=metadata,
+                user_id=user_id
             )
             
             return doc_id
             
         except Exception as e:
-            logger.error("Document ingestion failed", doc_id=doc_id, error=str(e))
+            logger.error("Document ingestion failed", doc_id=doc_id, user_id=user_id, error=str(e))
             if doc_id in self.documents:
                 self.documents[doc_id].status = DocumentStatus.FAILED
             raise
@@ -227,7 +238,7 @@ class DocumentService:
         """List all ingested documents."""
         return list(self.documents.values())
     
-    async def delete_document(self, doc_id: str):
+    async def delete_document(self, doc_id: str, user_id: str):
         """Delete a document by ID."""
         try:
             # Get all ids in pinecone
@@ -237,37 +248,37 @@ class DocumentService:
             # see https://docs.pinecone.io/guides/manage-data/target-an-index
             index = pc.Index(host="https://clt-tako-rag-kueduco.svc.aped-4627-b74a.pinecone.io")
 
-            # Collect all IDs with the document prefix
+            # Collect all IDs with the document prefix using user-specific namespace
             all_ids = []
             try:
                 # The list() method returns an iterator where each iteration yields a list of ID strings
-                for ids_batch in index.list(prefix=doc_id, namespace=''):
+                for ids_batch in index.list(prefix=doc_id, namespace=user_id):
                     # ids_batch is a list of ID strings, so we extend our all_ids list
                     all_ids.extend(ids_batch)
                 
-                logger.info(f"Found {len(all_ids)} vectors to delete for document", doc_id=doc_id)
+                logger.info(f"Found {len(all_ids)} vectors to delete for document", doc_id=doc_id, user_id=user_id)
                 
                 # Only delete if we found IDs
                 if all_ids:
-                    # Delete all ids in pinecone
-                    index.delete(ids=all_ids, namespace='')
-                    logger.info(f"Deleted {len(all_ids)} vectors from Pinecone", doc_id=doc_id)
+                    # Delete all ids in pinecone using user-specific namespace
+                    index.delete(ids=all_ids, namespace=user_id)
+                    logger.info(f"Deleted {len(all_ids)} vectors from Pinecone", doc_id=doc_id, user_id=user_id)
                 else:
-                    logger.warning("No vectors found in Pinecone for document", doc_id=doc_id)
+                    logger.warning("No vectors found in Pinecone for document", doc_id=doc_id, user_id=user_id)
                     
             except Exception as pinecone_error:
-                logger.error("Failed to delete vectors from Pinecone", doc_id=doc_id, error=str(pinecone_error))
+                logger.error("Failed to delete vectors from Pinecone", doc_id=doc_id, user_id=user_id, error=str(pinecone_error))
                 # Continue with local cleanup even if Pinecone deletion fails
             
             # Delete document from documents dict
             if doc_id in self.documents:
                 del self.documents[doc_id]
-                logger.info("Document deleted from local storage", doc_id=doc_id)
+                logger.info("Document deleted from local storage", doc_id=doc_id, user_id=user_id)
             else:
-                logger.warning("Document not found in local storage", doc_id=doc_id)
+                logger.warning("Document not found in local storage", doc_id=doc_id, user_id=user_id)
                 
         except Exception as e:
-            logger.error("Document deletion failed", doc_id=doc_id, error=str(e))
+            logger.error("Document deletion failed", doc_id=doc_id, user_id=user_id, error=str(e))
             raise
 
 

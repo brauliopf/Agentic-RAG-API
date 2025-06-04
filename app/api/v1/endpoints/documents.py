@@ -32,6 +32,7 @@ async def ingest_urls(
             
             doc_id = await document_service.ingest_url(
                 url=url_request.url,
+                user_id=current_user_id,
                 description=url_request.description,
                 metadata=metadata
             )
@@ -84,6 +85,7 @@ async def ingest_file(
         
         doc_id = await document_service.ingest_file(
             file_content=file_content,
+            user_id=current_user_id,
             description=description,
             metadata=metadata_dict
         )
@@ -249,7 +251,7 @@ async def delete_document(
                 detail="Access denied to this document"
             )
         
-        await document_service.delete_document(request.doc_id)
+        await document_service.delete_document(request.doc_id, current_user_id)
         return {"message": "Document deleted successfully", "doc_id": request.doc_id}
         
     except HTTPException:

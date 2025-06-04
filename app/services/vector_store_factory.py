@@ -1,4 +1,4 @@
-from typing import Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable, Optional
 from langchain_core.vectorstores import VectorStore, InMemoryVectorStore
 from langchain_core.embeddings import Embeddings
 from pinecone import Pinecone
@@ -23,7 +23,7 @@ class VectorStoreProtocol(Protocol):
         ...
 
 
-def load_vector_store(embeddings: Embeddings) -> VectorStore:
+def load_vector_store(embeddings: Embeddings, user_id: Optional[str] = None) -> VectorStore:
     """
     Factory function to create a vector store based on configuration.
     
@@ -33,6 +33,7 @@ def load_vector_store(embeddings: Embeddings) -> VectorStore:
     
     Args:
         embeddings: The embeddings model to use with the vector store
+        user_id: Optional user ID to use as namespace for user-specific operations
         
     Returns:
         VectorStore: An instance of the configured vector store type
@@ -42,7 +43,7 @@ def load_vector_store(embeddings: Embeddings) -> VectorStore:
     """
     store_type = settings.vector_store_type.lower()
     
-    logger.info("Creating vector store", store_type=store_type)
+    logger.info("Creating vector store", store_type=store_type, user_id=user_id)
 
     if store_type == "in_memory":
         return InMemoryVectorStore(embeddings)
@@ -51,12 +52,14 @@ def load_vector_store(embeddings: Embeddings) -> VectorStore:
             if not settings.pinecone_api_key:
                 raise ValueError("PINECONE_API_KEY is required for Pinecone vector store")
             
+            # Create vector store with user-specific namespace if provided
             vector_store = PineconeVectorStore(
                 index_name=settings.pinecone_index,
                 embedding=embeddings,
+                namespace=user_id,  # Use user_id as namespace for user isolation
                 pinecone_api_key=settings.pinecone_api_key
             )
-            logger.info("Successfully created Pinecone vector store", index_name=settings.pinecone_index)
+            logger.info("Successfully created Pinecone vector store", index_name=settings.pinecone_index, namespace=user_id)
             return vector_store
         except Exception as e:
             logger.error("Failed to create Pinecone vector store", error=str(e))

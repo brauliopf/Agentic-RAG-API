@@ -5,14 +5,17 @@ import json
 from langgraph.graph import START, StateGraph
 from typing import Dict, Any, Optional, Literal
 from langgraph.checkpoint.memory import MemorySaver
+from typing_extensions import TypedDict, Annotated
+from operator import add
 
 from ..core.logging import get_logger
 from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, SYSTEM_PROMPT_TEMPLATE
 from .llm_service import llm_service
 from .document_service import document_service
-from langchain_core.messages import HumanMessage, SystemMessage, RemoveMessage
+from langchain_core.messages import HumanMessage, SystemMessage, RemoveMessage, BaseMessage
 from langgraph.graph import MessagesState, StateGraph
 from langchain.tools.retriever import create_retriever_tool
+from langchain_core.tools import tool
 
 from langgraph.graph import StateGraph, START, END
 from ..models.requests import GradeDocuments
@@ -21,6 +24,12 @@ from langgraph.prebuilt import tools_condition
 
 
 logger = get_logger(__name__)
+
+# Custom state that extends MessagesState to include user_id
+class UserMessagesState(TypedDict):
+    """Extended MessagesState with user_id for user-specific operations."""
+    messages: Annotated[list[BaseMessage], add] 
+    user_id: str
 
 class RAGServiceAgentic:
     """
@@ -47,21 +56,77 @@ class RAGServiceAgentic:
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph pipeline."""
 
-        # 1. Create Retriever Tool
-        retriever = document_service.vector_store.as_retriever()
-        retriever_tool = create_retriever_tool(
-            retriever,
-            "retrieve_knowledge_base",
-            "Search and return information from a knowledge base.",
-        )
+        # Create a custom retriever function that will be called with state context
+        def retrieve_for_user(state: UserMessagesState, query: str) -> str:
+            """Search and return information from a user-specific knowledge base."""
+            try:
+                user_id = state.get("user_id", "default")
+                
+                # Get user-specific vector store
+                user_vector_store = document_service._get_vector_store(user_id)
+                
+                # Perform similarity search
+                retrieved_docs = user_vector_store.similarity_search(query, k=4)
+                
+                # Format results
+                serialized = "\n\n".join(
+                    f"Source: {doc.metadata}\nContent: {doc.page_content}"
+                    for doc in retrieved_docs
+                )
+                
+                logger.info("Retrieved documents", user_id=user_id, num_docs=len(retrieved_docs))
+                return serialized
+                
+            except Exception as e:
+                logger.error("Document retrieval failed", error=str(e), user_id=state.get("user_id"))
+                return "No relevant documents found."
 
-        # 2. Get graph builder
-        workflow = StateGraph(MessagesState)
+        # Create a custom retriever tool
+        @tool
+        def retrieve_knowledge_base(query: str) -> str:
+            """Search and return information from a user-specific knowledge base."""
+            # This will be replaced by the actual implementation in the custom tool node
+            return query
+        
+        retriever_tool = retrieve_knowledge_base
+
+        # Custom tool node that can access state
+        def custom_retriever_node(state: UserMessagesState):
+            """Custom tool node that handles retrieval with user context."""
+            # Get the last AI message with tool calls
+            last_ai_message = None
+            for message in reversed(state["messages"]):
+                if hasattr(message, 'tool_calls') and message.tool_calls:
+                    last_ai_message = message
+                    break
+            
+            if not last_ai_message or not last_ai_message.tool_calls:
+                return {"messages": []}
+            
+            # Process tool calls
+            tool_messages = []
+            for tool_call in last_ai_message.tool_calls:
+                if tool_call["name"] == "retrieve_knowledge_base":
+                    query = tool_call["args"]["query"]
+                    result = retrieve_for_user(state, query)
+                    
+                    # Create tool message
+                    from langchain_core.messages import ToolMessage
+                    tool_message = ToolMessage(
+                        content=result,
+                        tool_call_id=tool_call["id"]
+                    )
+                    tool_messages.append(tool_message)
+            
+            return {"messages": tool_messages}
+
+        # 2. Get graph builder with custom state
+        workflow = StateGraph(UserMessagesState)
 
         # 3. Node to decide if we need to retrieve or respond
         # If we need to retrieve, "response" will contain a tool call
         # If we don't need to retrieve, "response" will contain a message with the answer
-        def generate_query_or_respond(state: MessagesState):
+        def generate_query_or_respond(state: UserMessagesState):
             """Decide to retrieve, or simply respond to the user.
             Takes all the messages in the state and returns a response."""
 
@@ -97,7 +162,7 @@ class RAGServiceAgentic:
         
         workflow.add_node(generate_query_or_respond)
         workflow.add_edge(START, "generate_query_or_respond")
-        workflow.add_node("retriever_node", ToolNode([retriever_tool]))
+        workflow.add_node("retriever_node", custom_retriever_node)
         workflow.add_conditional_edges(
             "generate_query_or_respond",
             tools_condition, # LangGraph's function to check if the LLM's response contains tool calls
@@ -107,7 +172,7 @@ class RAGServiceAgentic:
             },
         )
 
-        def _get_last_human_message(state: MessagesState):
+        def _get_last_human_message(state: UserMessagesState):
             """Get the last human message from the state."""
             for message in reversed(state["messages"]):
                 if isinstance(message, HumanMessage):
@@ -115,7 +180,7 @@ class RAGServiceAgentic:
             return None
 
         # 4. Node to rewrite the question
-        def rewrite_question(state: MessagesState):
+        def rewrite_question(state: UserMessagesState):
             """Rewrite the original user question."""
             old_question = state["messages"][0].content
 
@@ -135,7 +200,7 @@ class RAGServiceAgentic:
             return {"messages": [rewritten_question]}
         workflow.add_node(rewrite_question)
 
-        def generate_answer(state: MessagesState):
+        def generate_answer(state: UserMessagesState):
             """Generate an answer."""
 
             # Get the last human input before the retriever_node
@@ -151,7 +216,7 @@ class RAGServiceAgentic:
         # conditional edge from tools_node to generate_answer or rewrite_question
         grader_model = llm_service.llm
         def grade_documents(
-            state: MessagesState,
+            state: UserMessagesState,
         ) -> Literal["generate_answer", "rewrite_question"]:
             """Determine whether the retrieved documents are relevant to the question."""
             oldquestion = state["messages"][0].content
@@ -204,8 +269,11 @@ class RAGServiceAgentic:
             # Create config with thread_id for session persistence
             config = {"configurable": {"thread_id": thread_id}}
             
-            # Add the new user message to the conversation
-            input_message = {"messages": [HumanMessage(content=question)]}
+            # Add the new user message to the conversation with user_id in state
+            input_message = {
+                "messages": [HumanMessage(content=question)],
+                "user_id": user_id
+            }
             
             # Run the RAG pipeline
             # Graph has a checkpointer that will maintain conversation history via the thread_id
@@ -217,6 +285,7 @@ class RAGServiceAgentic:
                 "RAG query completed", 
                 query_id=query_id,
                 processing_time=processing_time,
+                user_id=user_id
             )
             
             return {
@@ -230,7 +299,7 @@ class RAGServiceAgentic:
             
         except Exception as e:
             processing_time = time.time() - start_time
-            logger.error("RAG query failed", query_id=query_id, error=str(e))
+            logger.error("RAG query failed", query_id=query_id, error=str(e), user_id=user_id)
 
             raise
 

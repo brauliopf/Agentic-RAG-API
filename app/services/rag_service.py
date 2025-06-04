@@ -38,6 +38,7 @@ class State(TypedDict):
     query: Search
     context: List[Document]
     answer: str
+    user_id: str  # Add user_id to state
 
 
 class RAGService:
@@ -89,14 +90,16 @@ class RAGService:
             """Retrieve relevant documents."""
             try:
                 query = state["query"]
+                user_id = state.get("user_id")  # Get user_id from state
                 
                 # Build filter function if section is specified
                 filter_func = None
                 if query.get("section"):
                     filter_func = lambda doc: doc.metadata.get("section") == query["section"]
                 
-                # Retrieve documents
-                retrieved_docs = document_service.vector_store.similarity_search(
+                # Get user-specific vector store and retrieve documents
+                user_vector_store = document_service._get_vector_store(user_id)
+                retrieved_docs = user_vector_store.similarity_search(
                     query["query"],
                     k=settings.max_docs_retrieval,
                     filter=filter_func
@@ -105,7 +108,7 @@ class RAGService:
                 return {"context": retrieved_docs}
                 
             except Exception as e:
-                logger.error("Document retrieval failed", error=str(e))
+                logger.error("Document retrieval failed", error=str(e), user_id=state.get("user_id"))
                 return {"context": []}
         
         def generate(state: State):
@@ -131,6 +134,7 @@ class RAGService:
     async def query(
         self, 
         question: str, 
+        user_id: str,
         max_docs: Optional[int] = None,
         section_filter: Optional[Literal["beginning", "middle", "end"]] = None,
         thread_id: Optional[str] = None
@@ -140,7 +144,7 @@ class RAGService:
         start_time = time.time()
         
         try:
-            logger.info("Starting RAG query", query_id=query_id, question=question)
+            logger.info("Starting RAG query", query_id=query_id, question=question, user_id=user_id)
             
             # Store query metadata
             self.queries[query_id] = {
@@ -149,7 +153,8 @@ class RAGService:
                 "status": "processing",
                 "created_at": datetime.utcnow(),
                 "max_docs": max_docs or settings.max_docs_retrieval,
-                "section_filter": section_filter
+                "section_filter": section_filter,
+                "user_id": user_id
             }
             
             # Prepare initial state
@@ -157,7 +162,8 @@ class RAGService:
                 "question": question,
                 "query": {"query": question, "section": section_filter},
                 "context": [],
-                "answer": ""
+                "answer": "",
+                "user_id": user_id
             }
             
             # Run the RAG pipeline
@@ -186,7 +192,8 @@ class RAGService:
                 "RAG query completed", 
                 query_id=query_id, 
                 processing_time=processing_time,
-                context_docs=len(context)
+                context_docs=len(context),
+                user_id=user_id
             )
             
             return {
@@ -200,7 +207,7 @@ class RAGService:
             
         except Exception as e:
             processing_time = time.time() - start_time
-            logger.error("RAG query failed", query_id=query_id, error=str(e))
+            logger.error("RAG query failed", query_id=query_id, error=str(e), user_id=user_id)
             
             if query_id in self.queries:
                 self.queries[query_id].update({

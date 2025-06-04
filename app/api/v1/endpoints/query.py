@@ -22,13 +22,11 @@ async def submit_query(
     logger.info("Query request", user_id=current_user_id, question=request.question[:100])
     
     try:
-        service = rag_service_agentic if request.use_agentic else rag_service
-        
-        # Add user context to the query for filtering user-specific documents
+        # Use agentic service
         result = await rag_service_agentic.query(
             question=request.question,
             thread_id=request.thread_id,
-            user_id=current_user_id  # Pass user_id to filter documents
+            user_id=current_user_id
         )
         
         return QueryResponse(**result)
