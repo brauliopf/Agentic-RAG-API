@@ -132,7 +132,13 @@ class RAGServiceAgentic:
         def generate_answer(state: MessagesState):
             """Generate an answer."""
 
-            sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=state["messages"][0].content)
+            # Get the last human input before the retriever_node
+            question = None
+            for message in reversed(state["messages"]):
+                if isinstance(message, HumanMessage):
+                    question = message.content
+                    break
+            sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=question)
             messages = state["messages"] + [SystemMessage(content=sys_prompt)]
             response = llm_service.llm.invoke(messages)
 
