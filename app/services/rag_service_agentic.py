@@ -73,6 +73,7 @@ class RAGServiceAgentic:
                 summary_prompt = (
                     "Distill the above chat messages into a single summary message. "
                     "Include as many specific details as you can."
+                    "Include a summmary of every question and answer exchange."
                 )
                 summary_message = llm_service.llm.invoke(
                     state["messages"] + [HumanMessage(content=summary_prompt)]
@@ -106,6 +107,13 @@ class RAGServiceAgentic:
             },
         )
 
+        def _get_last_human_message(state: MessagesState):
+            """Get the last human message from the state."""
+            for message in reversed(state["messages"]):
+                if isinstance(message, HumanMessage):
+                    return message.content
+            return None
+
         # 4. Node to rewrite the question
         def rewrite_question(state: MessagesState):
             """Rewrite the original user question."""
@@ -118,10 +126,8 @@ class RAGServiceAgentic:
                     question = message.content
                     break
 
-            print("\nREWRITE QUESTION!!!\n")
             prompt = REWRITE_QUESTION_TEMPLATE.format(question=question)
             response = llm_service.llm.invoke([HumanMessage(content=prompt)])
-            print("\n\nResponse!!! -> ", response)
             response_json = json.loads(response.content)
             
             # Add the rewritten question to the existing messages
@@ -133,11 +139,7 @@ class RAGServiceAgentic:
             """Generate an answer."""
 
             # Get the last human input before the retriever_node
-            question = None
-            for message in reversed(state["messages"]):
-                if isinstance(message, HumanMessage):
-                    question = message.content
-                    break
+            question = _get_last_human_message(state)
             sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=question)
             messages = state["messages"] + [SystemMessage(content=sys_prompt)]
             response = llm_service.llm.invoke(messages)
@@ -155,11 +157,7 @@ class RAGServiceAgentic:
             oldquestion = state["messages"][0].content
             
             # Get the last human input before the retriever_node
-            question = None
-            for message in reversed(state["messages"]):
-                if isinstance(message, HumanMessage):
-                    question = message.content
-                    break
+            question = _get_last_human_message(state)
             
             context = state["messages"][-1].content
 
