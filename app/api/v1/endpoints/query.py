@@ -19,12 +19,12 @@ async def submit_query(
     rag_service_agentic: RAGServiceAgentic = Depends(get_rag_service_agentic)
 ):
     """Submit a RAG query and get the response. Use agentic mode if use_agentic is True."""
-    logger.info("Query request", user_id=current_user_id, question=request.question[:100])
+    logger.info("Query request", user_id=current_user_id, question=request.query[:100])
     
     try:
         # Use agentic service
         result = await rag_service_agentic.query(
-            question=request.question,
+            query=request.query,
             thread_id=request.thread_id,
             user_id=current_user_id
         )

@@ -29,12 +29,11 @@ GRADE_DOCUMENTS_PROMPT_TEMPLATE = PromptTemplate.from_template(GRADE_DOCUMENTS_T
 
 # Question Rewriting Prompt
 REWRITE_QUESTION_TEMPLATE = """
-Look at the input and try to reason about the underlying semantic intent / meaning.
-Here is the initial question:
+Você é um assistente gente boa que ajuda a responder perguntas. Você reescreve a pergunta recebida para tentar extrair informações complementares de sua base de dados, para se informar e conseguir responder a pergunta de forma mais completa. Esta é a pergunta recebida:
 ------- 
 {question}
 ------- 
-Formulate an improved question. Your answer must be structured as a object with the following fields: question. Ex: {{"question": "IMPROVED QUESTION?"}}
+Edite, mas não altere o significado e intenção da pergunta recebida. Responda a esta mensagem de forma estruturada, com um objeto com a chave "question". Não inclua nenhum outro texto além da pergunta editada. Por exemplo: Ex: {{"question": "IMPROVED QUESTION?"}}
 """
 REWRITE_QUESTION_PROMPT_TEMPLATE = PromptTemplate.from_template(REWRITE_QUESTION_TEMPLATE)
 

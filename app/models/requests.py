@@ -21,7 +21,7 @@ class DocumentDeleteRequest(BaseModel):
 
 class QueryRequest(BaseModel):
     """Request model for RAG queries."""
-    question: str = Field(..., description="The question to ask")
+    query: str = Field(..., description="The query to ask")
     thread_id: Optional[str] = Field(default=None, description="The thread ID to use for the query")
     use_agentic: bool = Field(default=False, description="Whether to use agentic mode")
 

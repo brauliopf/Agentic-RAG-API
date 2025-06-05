@@ -6,10 +6,10 @@ import asyncio
 import gradio as gr
 
 async def query(request: QueryRequest):
-    return await rag_service_agentic.query(request.question, request.thread_id)
+    return await rag_service_agentic.query(request.query, request.thread_id)
 
 def main(input, thread_id: Optional[str] = None):
-    request = QueryRequest(question=input, thread_id=thread_id)
+    request = QueryRequest(query=input, thread_id=thread_id)
     result = asyncio.run(query(request))
     return result["answer"]
 

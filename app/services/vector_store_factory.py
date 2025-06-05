@@ -23,7 +23,7 @@ class VectorStoreProtocol(Protocol):
         ...
 
 
-def load_vector_store(embeddings: Embeddings, user_id: Optional[str] = None) -> VectorStore:
+def load_vector_store(embeddings: Embeddings, user_id: Optional[str] = "__default__") -> VectorStore:
     """
     Factory function to create a vector store based on configuration.
     

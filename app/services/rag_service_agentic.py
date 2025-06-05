@@ -12,9 +12,8 @@ from ..core.logging import get_logger
 from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, SYSTEM_PROMPT_TEMPLATE
 from .llm_service import llm_service
 from .document_service import document_service
-from langchain_core.messages import HumanMessage, SystemMessage, RemoveMessage, BaseMessage
+from langchain_core.messages import HumanMessage, SystemMessage, RemoveMessage, BaseMessage, ToolMessage
 from langgraph.graph import MessagesState, StateGraph
-from langchain.tools.retriever import create_retriever_tool
 from langchain_core.tools import tool
 
 from langgraph.graph import StateGraph, START, END
@@ -56,13 +55,13 @@ class RAGServiceAgentic:
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph pipeline."""
 
-        # Create a custom retriever function that will be called with state context
+        # Create a user-specific retriever function that will be called with state context
         def retrieve_for_user(state: UserMessagesState, query: str) -> str:
-            """Search and return information from a user-specific knowledge base."""
+            """Retrieves content from a user-specific knowledge base. Returns a (str) serialized list of documents."""
             try:
-                user_id = state.get("user_id", "default")
+                user_id = state.get("user_id", "__default__")
                 
-                # Get user-specific vector store
+                # Get user-specific vector store (using user_id as the namespace in Pinecone)
                 user_vector_store = document_service._get_vector_store(user_id)
                 
                 # Perform similarity search
@@ -81,11 +80,11 @@ class RAGServiceAgentic:
                 logger.error("Document retrieval failed", error=str(e), user_id=state.get("user_id"))
                 return "No relevant documents found."
 
-        # Create a custom retriever tool
+        # Placeholder for a custom retriever tool (ref: custom_retriever_node)
+        # This is required to use the state to customize the tool and make the retriever user-specific
         @tool
         def retrieve_knowledge_base(query: str) -> str:
             """Search and return information from a user-specific knowledge base."""
-            # This will be replaced by the actual implementation in the custom tool node
             return query
         
         retriever_tool = retrieve_knowledge_base
@@ -93,25 +92,24 @@ class RAGServiceAgentic:
         # Custom tool node that can access state
         def custom_retriever_node(state: UserMessagesState):
             """Custom tool node that handles retrieval with user context."""
-            # Get the last AI message with tool calls
-            last_ai_message = None
+            # Get the last message with tool calls
+            last_tool_request_message = None
             for message in reversed(state["messages"]):
                 if hasattr(message, 'tool_calls') and message.tool_calls:
-                    last_ai_message = message
+                    last_tool_request_message = message
                     break
             
-            if not last_ai_message or not last_ai_message.tool_calls:
+            if not last_tool_request_message or not last_tool_request_message.tool_calls:
                 return {"messages": []}
             
             # Process tool calls
             tool_messages = []
-            for tool_call in last_ai_message.tool_calls:
+            for tool_call in last_tool_request_message.tool_calls:
                 if tool_call["name"] == "retrieve_knowledge_base":
                     query = tool_call["args"]["query"]
                     result = retrieve_for_user(state, query)
                     
                     # Create tool message
-                    from langchain_core.messages import ToolMessage
                     tool_message = ToolMessage(
                         content=result,
                         tool_call_id=tool_call["id"]
@@ -130,30 +128,32 @@ class RAGServiceAgentic:
             """Decide to retrieve, or simply respond to the user.
             Takes all the messages in the state and returns a response."""
 
-            last_human_message = state["messages"][-1]
-            sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=last_human_message.content)
+            last_message = state["messages"][-1] # either the first query or a rewritten query
+            sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=last_message.content)
 
-            if len(state["messages"]) >= 5:
+            chat_length = sum(len(m.content) for m in state['messages'])
+
+            if chat_length >= 10000000:
                 # Invoke the model to summarize the conversation
                 summary_prompt = (
                     "Distill the above chat messages into a single summary message. "
                     "Include as many specific details as you can."
-                    "Include a summmary of every question and answer exchange."
+                    "Include a summmary of every question and answer exchange, structured as an ordered list of questions (sender and content) and answers (sender and content)."
                 )
                 summary_message = llm_service.llm.invoke(
                     state["messages"] + [HumanMessage(content=summary_prompt)]
                 )
 
-                # Delete messages that we no longer want to show up (default to entire conversation history)
+                # Delete messages that we no longer want to show (default to entire conversation history)
                 delete_messages = [RemoveMessage(id=m.id) for m in state["messages"]]
 
                 # Generate response based on the summary of the conversation
                 response = llm_service.llm.invoke(
-                    [summary_message, last_human_message, SystemMessage(content=sys_prompt)]
+                    [summary_message, last_message, SystemMessage(content=sys_prompt)]
                 )
                 
                 # Return both the response and delete messages as separate items in the messages list
-                return {"messages": [summary_message, last_human_message, response] + delete_messages}
+                return {"messages": [summary_message, last_message, response] + delete_messages}
             else:
                 messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
                 response = llm_service.llm.bind_tools([retriever_tool]).invoke(messages)
@@ -182,8 +182,6 @@ class RAGServiceAgentic:
         # 4. Node to rewrite the question
         def rewrite_question(state: UserMessagesState):
             """Rewrite the original user question."""
-            old_question = state["messages"][0].content
-
             # Get the last human input before the retriever_node
             question = None
             for message in reversed(state["messages"]):
@@ -195,7 +193,7 @@ class RAGServiceAgentic:
             response = llm_service.llm.invoke([HumanMessage(content=prompt)])
             response_json = json.loads(response.content)
             
-            # Add the rewritten question to the existing messages
+            # Add the rewritten question to the existing messages as a HumanMessage
             rewritten_question = HumanMessage(content=response_json["question"])
             return {"messages": [rewritten_question]}
         workflow.add_node(rewrite_question)
@@ -209,8 +207,7 @@ class RAGServiceAgentic:
             messages = state["messages"] + [SystemMessage(content=sys_prompt)]
             response = llm_service.llm.invoke(messages)
 
-
-            return {"messages": [response]}
+            return {"messages": [response]}  # Wrap response in a list
         workflow.add_node(generate_answer)
 
         # conditional edge from tools_node to generate_answer or rewrite_question
@@ -219,11 +216,10 @@ class RAGServiceAgentic:
             state: UserMessagesState,
         ) -> Literal["generate_answer", "rewrite_question"]:
             """Determine whether the retrieved documents are relevant to the question."""
-            oldquestion = state["messages"][0].content
-            
             # Get the last human input before the retriever_node
             question = _get_last_human_message(state)
             
+            # Get the last message with tool calls
             context = state["messages"][-1].content
 
             prompt = GRADE_DOCUMENTS_TEMPLATE.format(question=question, context=context)
@@ -252,32 +248,29 @@ class RAGServiceAgentic:
     
     async def query(
         self, 
-        question: str,
+        query: str,
+        thread_id: str,
         user_id: str,
-        thread_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Process a RAG query and return the result."""
         query_id = str(uuid.uuid4())
         start_time = time.time()
-
-        if thread_id is None:
-            thread_id = f"query_{query_id}"
         
         try:
-            logger.info("Starting RAG query", query_id=query_id, question=question, thread_id=thread_id, user_id=user_id)
+            logger.info("Starting RAG query", query_id=query_id, query=query, thread_id=thread_id, user_id=user_id)
             
             # Create config with thread_id for session persistence
             config = {"configurable": {"thread_id": thread_id}}
             
             # Add the new user message to the conversation with user_id in state
-            input_message = {
-                "messages": [HumanMessage(content=question)],
+            initial_state = {
+                "messages": [HumanMessage(content=query)],
                 "user_id": user_id
             }
             
             # Run the RAG pipeline
             # Graph has a checkpointer that will maintain conversation history via the thread_id
-            result = await self.graph.ainvoke(input_message, config=config)
+            result = await self.graph.ainvoke(initial_state, config=config)
             
             processing_time = time.time() - start_time
             
@@ -290,7 +283,7 @@ class RAGServiceAgentic:
             
             return {
                 "id": query_id,
-                "question": question,
+                "question": query,
                 "answer": result["messages"][-1].content,
                 "context": [],
                 "processing_time": processing_time,
