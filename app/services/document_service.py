@@ -43,7 +43,7 @@ class DocumentService:
         temp_file_path = None
         
         try:
-            logger.info("Starting document ingestion", source_type="file", doc_id=doc_id, user_id=user_id)
+            logger.info("Starting document ingestion", source_type="file", doc_id=doc_id, user_id=user_id, metadata=metadata)
 
             # Store document metadata using the Document model
             document = Document(
@@ -82,6 +82,15 @@ class DocumentService:
             # Split documents into chunks
             all_splits = self.text_splitter.split_documents(docs)
             
+            # Update metadata for each chunk
+            # Must be done now, before the batching process
+            for chunk in all_splits:
+                # Update the source to use the original filename instead of temp file path
+                chunk.metadata["source"] = doc_id
+                # Add any additional metadata provided
+                if metadata:
+                    chunk.metadata.update(metadata)
+            
             # Process documents in batches
             all_document_ids = []
             batch_size = settings.batch_size
@@ -103,8 +112,7 @@ class DocumentService:
                 # Upsert batch to vector store using user-specific vector store
                 document_ids = self._get_vector_store(user_id).add_documents(
                     documents=batch, 
-                    ids=batch_ids,
-                    metadata=metadata
+                    ids=batch_ids
                 )
                 all_document_ids.extend(document_ids)
             

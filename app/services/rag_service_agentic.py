@@ -1,6 +1,7 @@
 import uuid
 import time
 import json
+import os
 
 from langgraph.graph import START, StateGraph
 from typing import Dict, Any, Optional, Literal
@@ -44,7 +45,11 @@ class RAGServiceAgentic:
             self.graph = self._build_graph()
             # Save graph visualization to file
             graph_png = self.graph.get_graph().draw_mermaid_png()
-            with open("./app/services/graphs/graph_agentic.png", "wb") as f:
+            # Use absolute path based on current file location
+            # current_dir gets the directory of the current file
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            graph_path = os.path.join(current_dir, "graphs", "graph_agentic.png")
+            with open(graph_path, "wb") as f:
                 f.write(graph_png)
             
         except Exception as e:
@@ -62,6 +67,7 @@ class RAGServiceAgentic:
                 user_id = state.get("user_id", "__default__")
                 
                 # Get user-specific vector store (using user_id as the namespace in Pinecone)
+                # This is the key command to personalize the RAG pipeline
                 user_vector_store = document_service._get_vector_store(user_id)
                 
                 # Perform similarity search

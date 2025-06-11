@@ -82,6 +82,10 @@ async def ingest_file(
         
         # Add user context to metadata
         metadata_dict["user_id"] = current_user_id
+
+        # Add source name to metadata
+        metadata_dict["source"] = file_content.filename
+        metadata_dict["source_type"] = "file"
         
         doc_id = await document_service.ingest_file(
             file_content=file_content,
