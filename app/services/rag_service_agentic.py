@@ -28,7 +28,8 @@ logger = get_logger(__name__)
 # Custom state that extends MessagesState to include user_id
 class UserMessagesState(TypedDict):
     """Extended MessagesState with user_id for user-specific operations."""
-    messages: Annotated[list[BaseMessage], add] 
+    messages: Annotated[list[BaseMessage], add]
+    sources: Annotated[list[str], add]
     user_id: str
 
 class RAGServiceAgentic:
@@ -87,7 +88,7 @@ class RAGServiceAgentic:
                 return "No relevant documents found."
 
         # Placeholder for a custom retriever tool (ref: custom_retriever_node)
-        # This is required to use the state to customize the tool and make the retriever user-specific
+        # Declare the tool name to let the agent invoke the tool (this is a placeholder only).
         @tool
         def retrieve_knowledge_base(query: str) -> str:
             """Search and return information from a user-specific knowledge base."""
@@ -96,6 +97,7 @@ class RAGServiceAgentic:
         retriever_tool = retrieve_knowledge_base
 
         # Custom tool node that can access state
+        # This is the actual function that delivers the retrieved documents to the agent.
         def custom_retriever_node(state: UserMessagesState):
             """Custom tool node that handles retrieval with user context."""
             # Get the last message with tool calls
@@ -301,6 +303,18 @@ class RAGServiceAgentic:
             logger.error("RAG query failed", query_id=query_id, error=str(e), user_id=user_id)
 
             raise
+
+    @staticmethod
+    def _extract_sources_from_tool_message(message_content: str) -> list[str]:
+        """Extracts sources from the retriever tool message content."""
+        sources = []
+        for line in message_content.splitlines():
+            if line.startswith("Source: "):
+                # Extract after 'Source: ' and before (optional) newline or 'Content:'
+                src = line[len("Source: "):].strip()
+                if src:
+                    sources.append(src)
+        return sources
 
 # Global service instance
 rag_service_agentic = RAGServiceAgentic() 

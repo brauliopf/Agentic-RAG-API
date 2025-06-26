@@ -23,7 +23,7 @@ class QueryRequest(BaseModel):
     """Request model for RAG queries."""
     query: str = Field(..., description="The query to ask")
     thread_id: Optional[str] = Field(default=None, description="The thread ID to use for the query")
-    use_agentic: bool = Field(default=False, description="Whether to use agentic mode")
+    use_agentic: Optional[bool] = Field(default=True, description="Whether to use agentic mode")
 
 
 class GradeDocuments(BaseModel):

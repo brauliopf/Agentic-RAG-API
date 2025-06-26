@@ -53,7 +53,7 @@ class Settings(BaseSettings):
 
     # vector store configuration
     pinecone_api_key: Optional[str] = Field(None, description="Pinecone API key")
-    pinecone_index: str = "clt-tako-rag"
+    pinecone_index: str = "agentic-rag"
     vector_store_type: str = Field(
         default="pinecone", 
         description="Vector store type: in_memory, pinecone"

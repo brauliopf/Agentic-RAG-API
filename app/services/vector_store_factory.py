@@ -52,7 +52,7 @@ def load_vector_store(embeddings: Embeddings, user_id: Optional[str] = "__defaul
             if not settings.pinecone_api_key:
                 raise ValueError("PINECONE_API_KEY is required for Pinecone vector store")
             
-            # Create vector store with user-specific namespace if provided
+            # Create/Get vector store with user-specific namespace if provided
             vector_store = PineconeVectorStore(
                 index_name=settings.pinecone_index,
                 embedding=embeddings,
@@ -73,4 +73,4 @@ def load_vector_store(embeddings: Embeddings, user_id: Optional[str] = "__defaul
 
 def get_supported_vector_stores() -> list[str]:
     """Get a list of supported vector store types."""
-    return ["in_memory", "chroma", "faiss"] 
+    return ["in_memory", "pinecone"] 

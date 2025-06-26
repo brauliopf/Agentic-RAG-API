@@ -254,7 +254,7 @@ class DocumentService:
 
             # To get the unique host for an index, 
             # see https://docs.pinecone.io/guides/manage-data/target-an-index
-            index = pc.Index(host="https://clt-tako-rag-kueduco.svc.aped-4627-b74a.pinecone.io")
+            index = pc.Index(host="https://agentic-rag-kueduco.svc.aped-4627-b74a.pinecone.io")
 
             # Collect all IDs with the document prefix using user-specific namespace
             all_ids = []
