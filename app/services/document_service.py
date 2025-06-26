@@ -32,10 +32,10 @@ class DocumentService:
 
     def _get_vector_store(self, user_id: str):
         """Get or create a user-specific vector store instance."""
-        if user_id not in self._vector_stores:
-            self._vector_stores[user_id] = load_vector_store(llm_service.embeddings, user_id)
-            logger.info("Created user-specific vector store", user_id=user_id)
-        return self._vector_stores[user_id]
+        if 'default' not in self._vector_stores:
+            self._vector_stores['default'] = load_vector_store(llm_service.embeddings)
+            logger.info("Created default vector store")
+        return self._vector_stores['default']
 
     async def ingest_file(self, file_content: UploadFile, user_id: str, metadata: Optional[Dict[str, Any]] = None, description: Optional[str] = None) -> str:
         """Ingest a document from a file uploaded by the user: load, split, and upsert to vector store in batches."""
@@ -87,6 +87,8 @@ class DocumentService:
             for chunk in all_splits:
                 # Update the source to use the original filename instead of temp file path
                 chunk.metadata["source"] = doc_id
+                chunk.metadata["user_id"] = user_id
+                chunk.metadata["doc_type"] = "private"
                 # Add any additional metadata provided
                 if metadata:
                     chunk.metadata.update(metadata)
@@ -190,6 +192,18 @@ class DocumentService:
             # Split documents into chunks
             all_splits = self.text_splitter.split_documents(docs)
             
+            # Update metadata for each chunk
+            # Must be done now, before the batching process
+            for chunk in all_splits:
+                # Update the source to use the original filename instead of temp file path
+                chunk.metadata["source"] = doc_id
+                chunk.metadata["user_id"] = user_id
+                chunk.metadata["doc_type"] = "private"
+                # Add any additional metadata provided
+                if metadata:
+                    chunk.metadata.update(metadata)
+            
+
             # Generate unique IDs for each chunk based on the doc_id
             chunk_ids = [f"{doc_id}_{i}" for i in range(len(all_splits))]
             
@@ -248,19 +262,17 @@ class DocumentService:
     
     async def delete_document(self, doc_id: str, user_id: str):
         """Delete a document by ID."""
+        namespace = 'default'
         try:
             # Get all ids in pinecone
             pc = Pinecone(api_key=settings.pinecone_api_key)
 
-            # To get the unique host for an index, 
-            # see https://docs.pinecone.io/guides/manage-data/target-an-index
-            index = pc.Index(host="https://agentic-rag-kueduco.svc.aped-4627-b74a.pinecone.io")
-
             # Collect all IDs with the document prefix using user-specific namespace
+            index = pc.Index(host="https://agentic-rag-kueduco.svc.aped-4627-b74a.pinecone.io")
             all_ids = []
             try:
                 # The list() method returns an iterator where each iteration yields a list of ID strings
-                for ids_batch in index.list(prefix=doc_id, namespace=user_id):
+                for ids_batch in index.list(prefix=doc_id, namespace=namespace):
                     # ids_batch is a list of ID strings, so we extend our all_ids list
                     all_ids.extend(ids_batch)
                 
@@ -269,7 +281,7 @@ class DocumentService:
                 # Only delete if we found IDs
                 if all_ids:
                     # Delete all ids in pinecone using user-specific namespace
-                    index.delete(ids=all_ids, namespace=user_id)
+                    index.delete(ids=all_ids, namespace=namespace)
                     logger.info(f"Deleted {len(all_ids)} vectors from Pinecone", doc_id=doc_id, user_id=user_id)
                 else:
                     logger.warning("No vectors found in Pinecone for document", doc_id=doc_id, user_id=user_id)
