@@ -44,6 +44,10 @@ class RAGServiceAgentic:
             # If the doc grader says the content is good, then the next node does not allow for retrieval, it's got to answer!
             # Thus, the quality of the grader model is critical.
             self.graph = self._build_graph()
+
+            # Load added collections from supabase db
+            # doc_ids
+
             # Save graph visualization to file
             graph_png = self.graph.get_graph().draw_mermaid_png()
             # Use absolute path based on current file location
@@ -72,7 +76,14 @@ class RAGServiceAgentic:
                 user_vector_store = document_service._get_vector_store(user_id)
                 
                 # Perform similarity search
-                retrieved_docs = user_vector_store.similarity_search(query, k=4)
+                # doc_ids = 
+                retrieved_docs = user_vector_store.similarity_search(query, k=4, filter={
+                        "$or": [
+                            {"doc_type": "private", "user_id": user_id},
+                            # {"doc_type": "group"},
+                            ]
+                    }
+                )
                 
                 # Format results
                 serialized = "\n\n".join(
