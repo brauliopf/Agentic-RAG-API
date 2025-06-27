@@ -70,17 +70,15 @@ class RAGServiceAgentic:
             """Retrieves content from a user-specific knowledge base. Returns a (str) serialized list of documents."""
             try:
                 user_id = state.get("user_id", "__default__")
-                
-                # Get user-specific vector store (using user_id as the namespace in Pinecone)
-                # This is the key command to personalize the RAG pipeline
                 user_vector_store = document_service._get_vector_store(user_id)
                 
                 # Perform similarity search
-                # doc_ids = 
+                # This is the key command to personalize the RAG pipeline
+                doc_group_ids = ['simples-nacional']
                 retrieved_docs = user_vector_store.similarity_search(query, k=4, filter={
                         "$or": [
                             {"doc_type": "private", "user_id": user_id},
-                            # {"doc_type": "group"},
+                            {"doc_type": "group", "doc_group": {"$in": doc_group_ids}},
                             ]
                     }
                 )
