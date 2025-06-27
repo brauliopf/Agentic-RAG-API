@@ -2,6 +2,7 @@ import uuid
 import time
 import json
 import os
+import asyncio
 
 from langgraph.graph import START, StateGraph
 from typing import Dict, Any, Optional, Literal
@@ -66,35 +67,40 @@ class RAGServiceAgentic:
         """Build the LangGraph pipeline."""
 
         # Create a user-specific retriever function that will be called with state context
-        def retrieve_for_user(state: UserMessagesState, query: str) -> str:
-            """Retrieves content from a user-specific knowledge base. Returns a (str) serialized list of documents."""
-            try:
-                user_id = state.get("user_id", "__default__")
-                user_vector_store = document_service._get_vector_store(user_id)
-                
-                # Perform similarity search
-                # This is the key command to personalize the RAG pipeline
-                doc_group_ids = ['simples-nacional']
-                retrieved_docs = user_vector_store.similarity_search(query, k=4, filter={
-                        "$or": [
-                            {"doc_type": "private", "user_id": user_id},
-                            {"doc_type": "group", "doc_group": {"$in": doc_group_ids}},
-                            ]
-                    }
-                )
-                
-                # Format results
-                serialized = "\n\n".join(
-                    f"Source: {doc.metadata}\nContent: {doc.page_content}"
-                    for doc in retrieved_docs
-                )
-                
-                logger.info("Retrieved documents", user_id=user_id, num_docs=len(retrieved_docs))
-                return serialized
-                
-            except Exception as e:
-                logger.error("Document retrieval failed", error=str(e), user_id=state.get("user_id"))
-                return "No relevant documents found."
+        async def async_similarity_search(vector_store, query, filter):
+            # If similarity_search is not async, use run_in_executor
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                None, lambda: vector_store.similarity_search(query, k=4, filter=filter)
+            )
+
+        async def retrieve_for_user_parallel(state, query):
+            user_id = state.get("user_id", "__default__")
+            user_vector_store = document_service._get_vector_store(user_id)
+            doc_group_ids = ['simples-nacional', 'another-group', '']
+
+            tasks = []
+            for group_id in doc_group_ids:
+                filter = {
+                    "$or": [
+                        {"doc_type": "private", "user_id": user_id},
+                        {"doc_type": "group", "doc_group": {"$in": [group_id]}},
+                    ]
+                }
+                tasks.append(async_similarity_search(user_vector_store, query, filter))
+
+            results = await asyncio.gather(*tasks)
+            # Flatten and process results as needed
+            retrieved_docs = [doc for group in results for doc in group]
+            
+            # Format results
+            serialized = "\n\n".join(
+                f"Source: {doc.metadata}\nContent: {doc.page_content}"
+                for doc in retrieved_docs
+            )
+            
+            logger.info("Retrieved documents", user_id=user_id, num_docs=len(retrieved_docs))
+            return serialized
 
         # Placeholder for a custom retriever tool (ref: custom_retriever_node)
         # Declare the tool name to let the agent invoke the tool (this is a placeholder only).
@@ -107,7 +113,7 @@ class RAGServiceAgentic:
 
         # Custom tool node that can access state
         # This is the actual function that delivers the retrieved documents to the agent.
-        def custom_retriever_node(state: UserMessagesState):
+        async def custom_retriever_node(state: UserMessagesState):
             """Custom tool node that handles retrieval with user context."""
             # Get the last message with tool calls
             last_tool_request_message = None
@@ -124,7 +130,7 @@ class RAGServiceAgentic:
             for tool_call in last_tool_request_message.tool_calls:
                 if tool_call["name"] == "retrieve_knowledge_base":
                     query = tool_call["args"]["query"]
-                    result = retrieve_for_user(state, query)
+                    result = await retrieve_for_user_parallel(state, query)
                     
                     # Create tool message
                     tool_message = ToolMessage(
