@@ -22,7 +22,7 @@ from langgraph.graph import StateGraph, START, END
 from ..models.requests import GradeDocuments
 from langgraph.prebuilt import ToolNode
 from langgraph.prebuilt import tools_condition
-
+from ..core.redis_client import redis
 
 logger = get_logger(__name__)
 
@@ -46,8 +46,6 @@ class RAGServiceAgentic:
             # Thus, the quality of the grader model is critical.
             self.graph = self._build_graph()
 
-            # Load added collections from supabase db
-            # doc_ids
 
             # Save graph visualization to file
             graph_png = self.graph.get_graph().draw_mermaid_png()
@@ -71,13 +69,24 @@ class RAGServiceAgentic:
             # If similarity_search is not async, use run_in_executor
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(
-                None, lambda: vector_store.similarity_search(query, k=4, filter=filter)
+                None, lambda: vector_store.similarity_search_with_score(query, k=4, filter=filter)
             )
 
+        # Fetch doc_group_ids from Redis for the user
+        def get_doc_group_ids(user_id: str) -> list[str]:
+            value = redis.get(user_id)
+            if value:
+                return [""] + value.split(",")
+            return []
+
         async def retrieve_for_user_parallel(state, query):
-            user_id = state.get("user_id", "__default__")
+            user_id = state.get("user_id", "default__user_id")
             user_vector_store = document_service._get_vector_store(user_id)
-            doc_group_ids = ['simples-nacional', 'another-group', '']
+            
+            # Get group ids from Redis
+            doc_group_ids = get_doc_group_ids(user_id)
+            if not doc_group_ids:
+                doc_group_ids = [""]  # fallback if none found
 
             tasks = []
             for group_id in doc_group_ids:
@@ -89,11 +98,17 @@ class RAGServiceAgentic:
                 }
                 tasks.append(async_similarity_search(user_vector_store, query, filter))
 
+            # Get results from all parallel tasks (wait for all to complete)
+            # Each task retrieves from a doc_group_id and returns up to 4 results (k=4)
+            # If no match is found, the task returns an empty list
+            # Each result has the following structure: (doc{id, metadata, page_content}, similarity_score)
+            # Flatten. Sort docs. Take top 5,
             results = await asyncio.gather(*tasks)
-            # Flatten and process results as needed
-            retrieved_docs = [doc for group in results for doc in group]
+            all_docs = [doc for group in results for doc in group]
+            top_docs = sorted(all_docs, key=lambda x: x[1], reverse=True)[:5]
             
-            # Format results
+            # Format results - Extract and serialize the document objects
+            retrieved_docs = [doc for doc, _ in top_docs]
             serialized = "\n\n".join(
                 f"Source: {doc.metadata}\nContent: {doc.page_content}"
                 for doc in retrieved_docs
