@@ -45,22 +45,23 @@ class RAGServiceAgentic:
             # If the doc grader says the content is good, then the next node does not allow for retrieval, it's got to answer!
             # Thus, the quality of the grader model is critical.
             self.graph = self._build_graph()
-
-
-            # Save graph visualization to file
-            graph_png = self.graph.get_graph().draw_mermaid_png()
-            # Use absolute path based on current file location
-            # current_dir gets the directory of the current file
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            graph_path = os.path.join(current_dir, "graphs", "graph_agentic.png")
-            with open(graph_path, "wb") as f:
-                f.write(graph_png)
+            self._save_graph()
             
         except Exception as e:
             logger.error("Failed to initialize RAG pipeline", error=str(e))
             raise
         logger.info("Initialized Agentic RAG Service")
     
+    def _save_graph(self):
+        # Save graph visualization to file
+        graph_png = self.graph.get_graph().draw_mermaid_png()
+        # Use absolute path based on current file location
+        # current_dir gets the directory of the current file
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        graph_path = os.path.join(current_dir, "graphs", "graph_agentic.png")
+        with open(graph_path, "wb") as f:
+            f.write(graph_png)
+
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph pipeline."""
 
@@ -68,6 +69,7 @@ class RAGServiceAgentic:
         async def async_similarity_search(vector_store, query, filter):
             # If similarity_search is not async, use run_in_executor
             loop = asyncio.get_event_loop()
+            logger.info("Run Similarity search", query=query, filter=filter)
             return await loop.run_in_executor(
                 None, lambda: vector_store.similarity_search_with_score(query, k=4, filter=filter)
             )
@@ -81,22 +83,23 @@ class RAGServiceAgentic:
 
         async def retrieve_for_user_parallel(state, query):
             user_id = state.get("user_id", "default__user_id")
-            user_vector_store = document_service._get_vector_store(user_id)
             
             # Get group ids from Redis
             doc_group_ids = get_doc_group_ids(user_id)
             if not doc_group_ids:
-                doc_group_ids = [""]  # fallback if none found
+                doc_group_ids = []
+            logger.info("Get list of curated doc groups", user_id=user_id, doc_group_ids=doc_group_ids)
 
             tasks = []
+            # append first task to query default index (activated only)
+            default_vector_store = document_service._get_vector_store("default")
             for group_id in doc_group_ids:
-                filter = {
-                    "$or": [
-                        {"doc_type": "private", "user_id": user_id},
-                        {"doc_type": "group", "doc_group": {"$in": [group_id]}},
-                    ]
-                }
-                tasks.append(async_similarity_search(user_vector_store, query, filter))
+                filter = {"doc_group": group_id}
+                tasks.append(async_similarity_search(default_vector_store, query, filter))
+            
+            # append second task to query user index
+            user_vector_store = document_service._get_vector_store(user_id)
+            tasks.append(async_similarity_search(user_vector_store, query, {}))
 
             # Get results from all parallel tasks (wait for all to complete)
             # Each task retrieves from a doc_group_id and returns up to 4 results (k=4)
@@ -106,6 +109,7 @@ class RAGServiceAgentic:
             results = await asyncio.gather(*tasks)
             all_docs = [doc for group in results for doc in group]
             top_docs = sorted(all_docs, key=lambda x: x[1], reverse=True)[:5]
+            logger.info("Top docs", top_docs=top_docs)
             
             # Format results - Extract and serialize the document objects
             retrieved_docs = [doc for doc, _ in top_docs]

@@ -23,7 +23,7 @@ class VectorStoreProtocol(Protocol):
         ...
 
 
-def load_vector_store(embeddings: Embeddings, user_id: Optional[str] = "default") -> VectorStore:
+def load_vector_store(embeddings: Embeddings, user_id: Optional[str]) -> VectorStore:
     """
     Factory function to create a vector store based on configuration.
     
@@ -56,10 +56,10 @@ def load_vector_store(embeddings: Embeddings, user_id: Optional[str] = "default"
             vector_store = PineconeVectorStore(
                 index_name=settings.pinecone_index,
                 embedding=embeddings,
-                namespace='default',
+                namespace=user_id,
                 pinecone_api_key=settings.pinecone_api_key
             )
-            logger.info("Successfully created Pinecone vector store", index_name=settings.pinecone_index, user_id=user_id)
+            logger.info("Created Pinecone vector store", index_name=settings.pinecone_index, namespace=user_id)
             return vector_store
         except Exception as e:
             logger.error("Failed to create Pinecone vector store", error=str(e))
