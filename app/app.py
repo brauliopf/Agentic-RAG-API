@@ -6,7 +6,7 @@ import asyncio
 import gradio as gr
 
 async def query(request: QueryRequest):
-    return await rag_service_agentic.query(request.query, request.thread_id)
+    return await rag_service_agentic.query(request.query, request.thread_id, user_id="1")
 
 def main(input, thread_id: Optional[str] = None):
     request = QueryRequest(query=input, thread_id=thread_id)
@@ -21,8 +21,6 @@ demo = gr.Interface(
 
 if __name__ == "__main__":
     docs = [
-        ("https://www.usetako.com/termos-de-uso","tako"),
-        ("https://www.usetako.com/politica-de-privacidade","tako"),
     ]
     for doc in docs:
         asyncio.run(document_service.ingest_url(url=doc[0]))
