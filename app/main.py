@@ -44,7 +44,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "https://agentic-rag-app.vercel.app"],  # Configure appropriately for production
+    allow_origins=["http://localhost:8080", "https://agentic-rag-app.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
