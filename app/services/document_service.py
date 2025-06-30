@@ -87,6 +87,7 @@ class DocumentService:
             for chunk in all_splits:
                 # Update the source to use the original filename instead of temp file path
                 chunk.metadata["source"] = doc_id
+                # chunk.metadata["doc_group"] = 'simples-nacional'
 
                 # Add any additional metadata provided
                 if metadata:
