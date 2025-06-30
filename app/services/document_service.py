@@ -30,7 +30,7 @@ class DocumentService:
         self.documents: Dict[str, Document] = {}
         logger.info("Initialized DocumentService")
 
-    def _get_vector_store(self, namespace: str = "default"):
+    def _get_vector_store_with_namespace(self, namespace: str = "default"):
         """Get or create a user-specific vector store instance."""
         if namespace not in self._vector_stores:
             self._vector_stores[namespace] = load_vector_store(llm_service.embeddings, namespace)
@@ -67,11 +67,12 @@ class DocumentService:
                 # Read and write the uploaded file content to the temporary file
                 content = await file_content.read()
                 temp_file.write(content)
+                # Write the content to the temporary file in disk
                 temp_file.flush()
             
             # Load document based on file type using the temporary file path
             if file_extension == 'pdf':
-                loader = PyPDFLoader(temp_file_path)
+                loader = PyPDFLoader(temp_file_path) # create mutiple docs (~one per page)
             elif file_extension == 'md':
                 loader = UnstructuredMarkdownLoader(temp_file_path)
             else:
@@ -83,11 +84,10 @@ class DocumentService:
             all_splits = self.text_splitter.split_documents(docs)
             
             # Update metadata for each chunk
-            # Must be done now, before the batching process
             for chunk in all_splits:
                 # Update the source to use the original filename instead of temp file path
                 chunk.metadata["source"] = doc_id
-                chunk.metadata["doc_group"] = 'simples-nacional'
+
                 # Add any additional metadata provided
                 if metadata:
                     chunk.metadata.update(metadata)
@@ -111,7 +111,7 @@ class DocumentService:
                 batch_ids = [f"{doc_id}_{i + j}" for j in range(len(batch))]
                 
                 # Upsert batch to vector store using user-specific vector store
-                document_ids = self._get_vector_store(user_id).add_documents(
+                document_ids = self._get_vector_store_with_namespace(user_id).add_documents(
                     documents=batch, 
                     ids=batch_ids
                 )
@@ -205,7 +205,7 @@ class DocumentService:
             chunk_ids = [f"{doc_id}_{i}" for i in range(len(all_splits))]
             
             # Add to vector store with IDs for upsert behavior using user-specific vector store
-            document_ids = self._get_vector_store(user_id).add_documents(
+            document_ids = self._get_vector_store_with_namespace(user_id).add_documents(
                 documents=all_splits, 
                 ids=chunk_ids
             )

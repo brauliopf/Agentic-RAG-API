@@ -92,13 +92,13 @@ class RAGServiceAgentic:
 
             tasks = []
             # append first task to query default index (activated only)
-            default_vector_store = document_service._get_vector_store()
+            default_vector_store = document_service._get_vector_store_with_namespace()
             for group in doc_groups:
                 filter = {"doc_group": group}
                 tasks.append(async_similarity_search(default_vector_store, query, filter))
             
             # append second task to query user index
-            user_vector_store = document_service._get_vector_store(user_id)
+            user_vector_store = document_service._get_vector_store_with_namespace(user_id)
             tasks.append(async_similarity_search(user_vector_store, query, {}))
 
             # Get results from all parallel tasks (wait for all to complete)

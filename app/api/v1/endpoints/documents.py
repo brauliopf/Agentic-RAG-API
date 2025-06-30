@@ -28,7 +28,6 @@ async def ingest_urls(
         for url_request in urls:
             # Add user context to metadata
             metadata = url_request.metadata or {}
-            metadata["user_id"] = current_user_id
             
             doc_id = await document_service.ingest_url(
                 url=url_request.url,
@@ -102,6 +101,7 @@ async def ingest_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Document ingestion failed: {str(e)}"
         )
+
 
 @router.get("/documents/{doc_id}", response_model=DocumentResponse)
 async def get_document(
@@ -214,20 +214,6 @@ async def delete_document(
 ):
     """Delete a specific document by ID."""
     try:
-        # First check if document exists and user has access
-        doc_data = await document_service.get_document(request.doc_id)
-        if not doc_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Document not found"
-            )
-        
-        if doc_data.metadata.get("user_id") != current_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to this document"
-            )
-        
         await document_service.delete_document(request.doc_id, current_user_id)
         return {"message": "Document deleted successfully", "doc_id": request.doc_id}
         
