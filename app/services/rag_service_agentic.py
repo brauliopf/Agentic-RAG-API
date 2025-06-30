@@ -67,10 +67,10 @@ class RAGServiceAgentic:
 
         # Create a user-specific retriever function that will be called with state context
         async def async_similarity_search(vector_store, query, filter):
-            # If similarity_search is not async, use run_in_executor
             loop = asyncio.get_event_loop()
             logger.info("Run Similarity search", query=query, filter=filter)
             return await loop.run_in_executor(
+                # reference langchain + pinecone: 
                 None, lambda: vector_store.similarity_search_with_score(query, k=4, filter=filter)
             )
 
@@ -82,19 +82,19 @@ class RAGServiceAgentic:
             return []
 
         async def retrieve_for_user_parallel(state, query):
-            user_id = state.get("user_id", "default__user_id")
+            user_id = state.get("user_id", "_")
             
             # Get group ids from Redis
-            doc_group_ids = get_doc_group_ids(user_id)
-            if not doc_group_ids:
-                doc_group_ids = []
-            logger.info("Get list of curated doc groups", user_id=user_id, doc_group_ids=doc_group_ids)
+            doc_groups = get_doc_group_ids(user_id)
+            if not doc_groups:
+                doc_groups = []
+            logger.info("Get list of curated doc groups", user_id=user_id, doc_groups=doc_groups)
 
             tasks = []
             # append first task to query default index (activated only)
-            default_vector_store = document_service._get_vector_store("default")
-            for group_id in doc_group_ids:
-                filter = {"doc_group": group_id}
+            default_vector_store = document_service._get_vector_store()
+            for group in doc_groups:
+                filter = {"doc_group": group}
                 tasks.append(async_similarity_search(default_vector_store, query, filter))
             
             # append second task to query user index

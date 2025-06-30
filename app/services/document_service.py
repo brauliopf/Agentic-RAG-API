@@ -30,14 +30,15 @@ class DocumentService:
         self.documents: Dict[str, Document] = {}
         logger.info("Initialized DocumentService")
 
-    def _get_vector_store(self, user_id: str):
+    def _get_vector_store(self, namespace: str = "default"):
         """Get or create a user-specific vector store instance."""
-        if user_id not in self._vector_stores:
-            self._vector_stores[user_id] = load_vector_store(llm_service.embeddings, user_id)
-        return self._vector_stores[user_id]
+        if namespace not in self._vector_stores:
+            self._vector_stores[namespace] = load_vector_store(llm_service.embeddings, namespace)
+        return self._vector_stores[namespace]
 
     async def ingest_file(self, file_content: UploadFile, user_id: str, metadata: Optional[Dict[str, Any]] = None, description: Optional[str] = None) -> str:
-        """Ingest a document from a file uploaded by the user: load, split, and upsert to vector store in batches."""
+        """Ingest a document from a file uploaded by the user: load, split, and upsert to vector store in batches. Uses the helper function _get_vector_store to get the vector store for the user_id. The vector store is created if it doesn't exist. The user_id is used as the namespace for the vector store.
+        """
         doc_id = file_content.filename
         temp_file_path = None
         
@@ -86,6 +87,7 @@ class DocumentService:
             for chunk in all_splits:
                 # Update the source to use the original filename instead of temp file path
                 chunk.metadata["source"] = doc_id
+                chunk.metadata["doc_group"] = 'simples-nacional'
                 # Add any additional metadata provided
                 if metadata:
                     chunk.metadata.update(metadata)
@@ -250,10 +252,6 @@ class DocumentService:
         
         logger.info("Document updated", doc_id=doc_id, update_fields=update_data.dict(exclude_none=True))
         return document
-    
-    async def list_documents(self) -> List[Document]:
-        """List all ingested documents."""
-        return list(self.documents.values())
     
     async def delete_document(self, doc_id: str, user_id: str):
         """Delete a document by ID."""

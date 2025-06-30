@@ -61,7 +61,7 @@ async def ingest_urls(
 async def ingest_file(
     file_content: UploadFile = File(None, description="File to ingest"),
     description: str = Form(None, description="Human-readable description of the document"),
-    metadata: str = Form(None, description="Additional metadata as JSON string"),
+    metadata: str = Form    (None, description="Additional metadata as JSON string"),
     current_user_id: str = Depends(get_current_user_id),
     document_service: DocumentService = Depends(get_document_service)
 ):
@@ -80,9 +80,6 @@ async def ingest_file(
                     detail="Invalid JSON format for metadata"
                 )
         
-        # Add user context to metadata
-        metadata_dict["user_id"] = current_user_id
-
         # Add source name to metadata
         metadata_dict["source"] = file_content.filename
         metadata_dict["source_type"] = "file"
@@ -208,30 +205,6 @@ async def describe_documents(
             detail=f"Document creation failed: {str(e)}"
         )
 
-
-@router.get("/documents", response_model=List[DocumentResponse])
-async def list_documents(
-    current_user_id: str = Depends(get_current_user_id),
-    document_service: DocumentService = Depends(get_document_service)
-):
-    """List all ingested documents for the current user."""
-    try:
-        documents = await document_service.list_documents()
-        
-        # Filter documents by user_id
-        user_documents = [
-            doc for doc in documents 
-            if doc.metadata.get("user_id") == current_user_id
-        ]
-        
-        return [DocumentResponse(**doc.dict()) for doc in user_documents]
-        
-    except Exception as e:
-        logger.error("Failed to list documents", user_id=current_user_id, error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list documents: {str(e)}"
-        )
     
 @router.post("/documents/delete")
 async def delete_document(
