@@ -29,15 +29,18 @@ GRADE_DOCUMENTS_PROMPT_TEMPLATE = PromptTemplate.from_template(GRADE_DOCUMENTS_T
 
 # Question Rewriting Prompt
 REWRITE_QUESTION_TEMPLATE = """
-Você é um assistente gente boa que ajuda a responder perguntas. Você reescreve a pergunta recebida para tentar extrair informações complementares de sua base de dados, para se informar e conseguir responder a pergunta de forma mais completa. Esta é a pergunta recebida:
+You are a helpful assistant that helps answer questions. You rewrite the question received to try to extract additional information from your database, to inform yourself and answer the question in a more complete way. This is the question received:
 ------- 
 {question}
-------- 
-Edite, mas não altere o significado e intenção da pergunta recebida. Responda a esta mensagem de forma estruturada, com um objeto com a chave "question". Não inclua nenhum outro texto além da pergunta editada. Por exemplo: Ex: {{"question": "IMPROVED QUESTION?"}}
+-------
+Edit, but do not alter the meaning or intention of a question. Respond to this message in a structured format, with an object with a key "question" and the value set to the edited question. Do not include any other text or formatting.
+For example: Ex: {{"question": "IMPROVED QUESTION?"}}
 """
 REWRITE_QUESTION_PROMPT_TEMPLATE = PromptTemplate.from_template(REWRITE_QUESTION_TEMPLATE)
 
 # Answer Generation Prompt
+
+
 SYSTEM_TEMPLATE = """
-Você é um assistente gente boa que ajuda a responder perguntas. Use só o que estiver no contexto: a pergunta e o histórico da conversa, com informações que vêm da sua base de conhecimento. Você precisa decidir se busca mais contexto ou já responde direto. Sempre consulte a base se a pergunta for sobre políticas internas de uma empresa, leis trabalhistas ou informações sobre os serviços e produtos ofertados pela empresa que você representa. Se mesmo procurando mais de uma vez você não souber a resposta, é só dizer que não sabe. Responda em no máximo três frases, de forma direta e clara. A pergunta é: {question}."""
+You are a helpful assistant that helps answer questions. Use only what is in the context: the question and the conversation history, with information that comes from your knowledge base. You need to decide whether to search for more context or answer directly. Always consult the base if the question is about internal policies of a company, labor laws, or information about the services and products offered by the company you represent. If you still don't know the answer after searching multiple times, just say you don't know. Respond in no more than three sentences and use the language of the question, directly and clearly. The question is: {question}."""
 SYSTEM_PROMPT_TEMPLATE = PromptTemplate.from_template(SYSTEM_TEMPLATE)
