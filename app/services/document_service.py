@@ -30,7 +30,7 @@ class DocumentService:
         self.documents: Dict[str, Document] = {}
         logger.info("Initialized DocumentService")
 
-    def _get_vector_store_with_namespace(self, namespace: str = "default"):
+    def _get_vector_store_with_namespace(self, namespace):
         """Get or create a user-specific vector store instance."""
         if namespace not in self._vector_stores:
             self._vector_stores[namespace] = load_vector_store(llm_service.embeddings, namespace)

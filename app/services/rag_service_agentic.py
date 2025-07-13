@@ -84,22 +84,24 @@ class RAGServiceAgentic:
         async def retrieve_for_user_parallel(state, query):
             user_id = state.get("user_id", "_")
             
-            # Get group ids from Redis
+            # Get doc group ids from Redis
+            # This is the list of doc groups that the user has access to
             doc_groups = get_doc_group_ids(user_id)
             if not doc_groups:
                 doc_groups = []
             logger.info("Get list of curated doc groups", user_id=user_id, doc_groups=doc_groups)
 
             tasks = []
-            # append first task to query default index (activated only)
-            default_vector_store = document_service._get_vector_store_with_namespace()
+            
+            # query default index for activated content only (doc_group)
+            default_vectordb_namespace = document_service._get_vector_store_with_namespace("default")
             for group in doc_groups:
                 filter = {"doc_group": group}
-                tasks.append(async_similarity_search(default_vector_store, query, filter))
+                tasks.append(async_similarity_search(default_vectordb_namespace, query, filter))
             
-            # append second task to query user index
-            user_vector_store = document_service._get_vector_store_with_namespace(user_id)
-            tasks.append(async_similarity_search(user_vector_store, query, {}))
+            # query user index for all content
+            user_vectordb_namespace = document_service._get_vector_store_with_namespace(user_id)
+            tasks.append(async_similarity_search(user_vectordb_namespace, query, {}))
 
             # Get results from all parallel tasks (wait for all to complete)
             # Each task retrieves from a doc_group_id and returns up to 4 results (k=4)
@@ -141,6 +143,7 @@ class RAGServiceAgentic:
                     last_tool_request_message = message
                     break
             
+            # If there is no tool call, return empty list --add nothing to the messages list
             if not last_tool_request_message or not last_tool_request_message.tool_calls:
                 return {"messages": []}
             
