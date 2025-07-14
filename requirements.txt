@@ -12,6 +12,7 @@ gradio
 pypdf
 unstructured[md]
 langchain-pinecone
+langchain-tavily
 pydantic>=2.0.0 # Data validation and settings management using Python type hints.
 pydantic-settings>=2.0.0
 structlog>=23.0.0
