@@ -2,37 +2,26 @@ import uuid
 import time
 import json
 import os
-import asyncio
 
 from langgraph.graph import START, END, StateGraph
 from typing import Dict, Any, Literal
 from langgraph.checkpoint.memory import MemorySaver
-from typing_extensions import TypedDict, Annotated
-from operator import add
 
 from ..core.logging import get_logger
 from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, SYSTEM_PROMPT_TEMPLATE
 from .llm_service import llm_service
 from .document_service import document_service
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
-from langchain_core.tools import InjectedToolArg,tool
-from langchain_tavily import TavilySearch
+from langchain_core.messages import HumanMessage
 
 from ..models.requests import GradeDocuments
 from langgraph.prebuilt import ToolNode
 from langgraph.prebuilt import tools_condition
-from ..core.redis_client import redis
-
+from .agent.tools import tavily_search_tool, retrieve_for_user_id
+from .agent.nodes import generate_query_or_respond, rewrite_question, generate_answer, get_last_human_message
+from .agent.schemas import UserMessagesState
 from copy import deepcopy
 
 logger = get_logger(__name__)
-
-# Custom state that extends MessagesState to include user_id
-class UserMessagesState(TypedDict):
-    """Extended MessagesState with user_id for user-specific operations."""
-    messages: Annotated[list[BaseMessage], add]
-    sources: Annotated[list[str], add]
-    user_id: str
 
 class RAGServiceAgentic:
     """
@@ -59,184 +48,26 @@ class RAGServiceAgentic:
         # Use absolute path based on current file location
         # current_dir gets the directory of the current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        graph_path = os.path.join(current_dir, "graphs", "graph_agentic.png")
+        graph_path = os.path.join(current_dir, "agent/graphs", "graph_agentic.png")
         with open(graph_path, "wb") as f:
             f.write(graph_png)
 
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph pipeline."""
 
-        # Create a user-specific retriever function that will be called with state context
-        async def async_similarity_search(vector_store, query, filter):
-            loop = asyncio.get_event_loop()
-            logger.info("Run Similarity search", query=query, filter=filter)
-            return await loop.run_in_executor(
-                # reference langchain + pinecone: 
-                None, lambda: vector_store.similarity_search_with_score(query, k=4, filter=filter)
-            )
-
-        # Fetch doc_group_ids from Redis for the user
-        def get_doc_group_ids(user_id: str) -> list[str]:
-            value = redis.get(user_id)
-            if value:
-                return [""] + value.split(",")
-            return []
-
-        async def retrieve_execute_parallel(user_id, query):
-            # user_id = state.get("user_id", "_")
-            
-            # Get doc group ids from Redis
-            # This is the list of doc groups that the user has access to
-            doc_groups = get_doc_group_ids(user_id)
-            if not doc_groups:
-                doc_groups = []
-            logger.info("Get list of curated doc groups", user_id=user_id, doc_groups=doc_groups)
-
-            tasks = []
-            
-            # query default index for activated content only (doc_group)
-            default_vectordb_namespace = document_service._get_vector_store_with_namespace("default")
-            for group in doc_groups:
-                filter = {"doc_group": group}
-                tasks.append(async_similarity_search(default_vectordb_namespace, query, filter))
-            
-            # query user index for all content
-            user_vectordb_namespace = document_service._get_vector_store_with_namespace(user_id)
-            tasks.append(async_similarity_search(user_vectordb_namespace, query, {}))
-
-            # Get results from all parallel tasks (wait for all to complete)
-            # Each task retrieves from a doc_group_id and returns up to 4 results (k=4)
-            # If no match is found, the task returns an empty list
-            # Each result has the following structure: (doc{id, metadata, page_content}, similarity_score)
-            # Flatten. Sort docs. Take top 5,
-            results = await asyncio.gather(*tasks)
-            all_docs = [doc for group in results for doc in group]
-            top_docs = sorted(all_docs, key=lambda x: x[1], reverse=True)[:5]
-            logger.info("Top docs", top_docs=top_docs)
-            
-            # Format results - Extract and serialize the document objects
-            retrieved_docs = [doc for doc, _ in top_docs]
-            serialized = "\n\n".join(
-                f"Source: {doc.metadata}\nContent: {doc.page_content}"
-                for doc in retrieved_docs
-            )
-            
-            logger.info("Retrieved documents", user_id=user_id, num_docs=len(retrieved_docs))
-            return serialized
-
-        @tool
-        def tavily_search_tool(
-            query: Annotated[str, 'The query to search Tavily for']
-        ) -> str:
-            """Perform a search on Tavily"""
-            print(f">>>>> Searching Tavily for: {query}")
-            return TavilySearch(max_results=3).run(query)
-        
-        @tool
-        async def retrieve_for_user_id(query: str, user_id: Annotated[str, InjectedToolArg]) -> str:
-            """Search and return information from a user-specific knowledge base."""
-            return await retrieve_execute_parallel(user_id, query)
-
-        workflow = StateGraph(UserMessagesState)
-
-        ##########
-        # Define nodes and edges.
-        ##########
-        # 1: Take task + Decide whether to respond or retrieve.
-        # Node to decide if we need to retrieve or respond
-        # If we need to retrieve, "response" will contain a tool call
-        # If we don't need to retrieve, "response" will contain a message with the answer
-        def generate_query_or_respond(state: UserMessagesState):
-            """Decide to retrieve, or simply respond to the user.
-            Takes all the messages in the state and returns a response."""
-
-            last_message = state["messages"][-1] # either the first query or a rewritten query
-            sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=last_message.content)
-
-            messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
-
-            llm_with_tools = llm_service.llm.bind_tools([retrieve_for_user_id, tavily_search_tool])
-            response = llm_with_tools.invoke(messages)
-            
-            # If the response contains tool calls, inject user_id into them
-            if response.tool_calls:
-                updated_tool_calls = []
-                for tool_call in response.tool_calls:
-                    tool_call_copy = deepcopy(tool_call)
-                    tool_call_copy["args"]["user_id"] = state["user_id"]
-                    updated_tool_calls.append(tool_call_copy)
-                response.tool_calls = updated_tool_calls
-
-            return {"messages": [response]}
-        
-        # 2: Execute the retrieval.
-        tools = ToolNode([retrieve_for_user_id, tavily_search_tool])
-        
-        workflow.add_node(generate_query_or_respond)
-        workflow.add_edge(START, "generate_query_or_respond")
-        workflow.add_node("retriever_node", tools)
-        workflow.add_conditional_edges(
-            "generate_query_or_respond",
-            tools_condition, # LangGraph's function to check if the LLM's response contains tool calls
-            {
-                "tools": "retriever_node", # if there is tool call, go to the tools node
-                END: END, # if there is not tool call, go to the end node
-            },
-        )
-
-        def _get_last_human_message(state: UserMessagesState):
-            """Get the last human message from the state."""
-            for message in reversed(state["messages"]):
-                if isinstance(message, HumanMessage):
-                    return message.content
-            return None
-
-        # 4. Node to rewrite the question
-        def rewrite_question(state: UserMessagesState):
-            """Rewrite the original user question."""
-            # Get the last human input before the retriever_node
-            question = None
-            for message in reversed(state["messages"]):
-                if isinstance(message, HumanMessage):
-                    question = message.content
-                    break
-
-            prompt = REWRITE_QUESTION_TEMPLATE.format(question=question)
-            response = llm_service.llm.invoke([HumanMessage(content=prompt)])
-            response_json = json.loads(response.content)
-            
-            # Add the rewritten question to the existing messages as a HumanMessage
-            rewritten_question = HumanMessage(content=response_json["question"])
-            return {"messages": [rewritten_question]}
-        workflow.add_node(rewrite_question)
-
-        def generate_answer(state: UserMessagesState):
-            """Generate an answer."""
-
-            # Get the last human input before the retriever_node
-            question = _get_last_human_message(state)
-            sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=question)
-            messages = state["messages"] + [SystemMessage(content=sys_prompt)]
-            response = llm_service.llm.invoke(messages)
-
-            return {"messages": [response]}  # Wrap response in a list
-        workflow.add_node(generate_answer)
-
-        # conditional edge from tools_node to generate_answer or rewrite_question
-        grader_model = llm_service.llm
-        def grade_documents(
+        def _grade_documents_router(
             state: UserMessagesState,
         ) -> Literal["generate_answer", "rewrite_question"]:
             """Determine whether the retrieved documents are relevant to the question."""
             # Get the last human input before the retriever_node
-            question = _get_last_human_message(state)
+            question = get_last_human_message(state)
             
             # Get the last message with tool calls
             context = state["messages"][-1].content
 
             prompt = GRADE_DOCUMENTS_TEMPLATE.format(question=question, context=context)
             response = (
-                grader_model
+                llm_service.llm
                 .with_structured_output(GradeDocuments).invoke(
                     [HumanMessage(content=prompt)]
                 )
@@ -246,10 +77,28 @@ class RAGServiceAgentic:
                 return "generate_answer"
             else:
                 return "rewrite_question"
-            
+
+        workflow = StateGraph(UserMessagesState)
+        
+        tools = ToolNode([retrieve_for_user_id, tavily_search_tool])
+        
+        workflow.add_node(generate_query_or_respond)
+        workflow.add_edge(START, "generate_query_or_respond")
+        workflow.add_node("tools_node", tools)
         workflow.add_conditional_edges(
-            "retriever_node",
-            grade_documents
+            "generate_query_or_respond",
+            tools_condition, # LangGraph's function to check if the LLM's response contains tool calls
+            {
+                "tools": "tools_node", # if there is a tool call, go to the tools node
+                END: END, # if there is not a tool call, go to the end node
+            },
+        )
+        workflow.add_node(rewrite_question)
+        workflow.add_node(generate_answer)
+        
+        workflow.add_conditional_edges(
+            "tools_node",
+            _grade_documents_router
         )
         workflow.add_edge("rewrite_question", "generate_query_or_respond")
         workflow.add_edge("generate_answer", END)

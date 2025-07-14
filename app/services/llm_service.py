@@ -12,11 +12,11 @@ class LLMService:
     
     def __init__(self):
         self._llm: Optional[ChatOpenAI] = None
-        self._embeddings: Optional[OpenAIEmbeddings] = None
+        self._embeddings_llm: Optional[OpenAIEmbeddings] = None
     
-    # Lazt-loading. _llm variable inits as None, so the first time llm is called, it will be created.
+    # Lazy-loading. _llm variable inits as None, so the first time llm is called, it will be created.
     # After that, it will return the cached instance.
-    # @property decorator will make the llm method callable as an attribute, not as a function.
+    # @property decorator makes the llm method callable as an attribute, not as a function.
     @property
     def llm(self) -> ChatOpenAI:
         """Get or create the LLM instance."""
@@ -37,15 +37,15 @@ class LLMService:
         return self._llm
     
     @property
-    def embeddings(self) -> OpenAIEmbeddings:
+    def embeddings_llm(self) -> OpenAIEmbeddings:
         """Get or create the embeddings instance."""
-        if self._embeddings is None:
+        if self._embeddings_llm is None:
             try:
                 if not settings.openai_api_key:
                     raise ValueError(
                         "OPENAI_API_KEY is required. Please set it as an environment variable or in a .env file."
                     )
-                self._embeddings = OpenAIEmbeddings(
+                self._embeddings_llm = OpenAIEmbeddings(
                     model=settings.embedding_model,
                     api_key=settings.openai_api_key
                 )
@@ -53,7 +53,7 @@ class LLMService:
             except Exception as e:
                 logger.error("Failed to initialize embeddings", error=str(e))
                 raise
-        return self._embeddings
+        return self._embeddings_llm
 
 
 # Global service instance

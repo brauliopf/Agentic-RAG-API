@@ -30,14 +30,14 @@ class DocumentService:
         self.documents: Dict[str, Document] = {}
         logger.info("Initialized DocumentService")
 
-    def _get_vector_store_with_namespace(self, namespace):
+    def get_vector_store_with_namespace(self, namespace):
         """Get or create a user-specific vector store instance."""
         if namespace not in self._vector_stores:
-            self._vector_stores[namespace] = load_vector_store(llm_service.embeddings, namespace)
+            self._vector_stores[namespace] = load_vector_store(llm_service.embeddings_llm, namespace)
         return self._vector_stores[namespace]
 
     async def ingest_file(self, file_content: UploadFile, user_id: str, metadata: Optional[Dict[str, Any]] = None, description: Optional[str] = None) -> str:
-        """Ingest a document from a file uploaded by the user: load, split, and upsert to vector store in batches. Uses the helper function _get_vector_store to get the vector store for the user_id. The vector store is created if it doesn't exist. The user_id is used as the namespace for the vector store.
+        """Ingest a document from a file uploaded by the user: load, split, and upsert to vector store in batches. Uses the vector store with the namespace user_id.
         """
         doc_id = file_content.filename
         temp_file_path = None
@@ -112,7 +112,7 @@ class DocumentService:
                 batch_ids = [f"{doc_id}_{i + j}" for j in range(len(batch))]
                 
                 # Upsert batch to vector store using user-specific vector store
-                document_ids = self._get_vector_store_with_namespace(user_id).add_documents(
+                document_ids = self.get_vector_store_with_namespace(user_id).add_documents(
                     documents=batch, 
                     ids=batch_ids
                 )
@@ -206,7 +206,7 @@ class DocumentService:
             chunk_ids = [f"{doc_id}_{i}" for i in range(len(all_splits))]
             
             # Add to vector store with IDs for upsert behavior using user-specific vector store
-            document_ids = self._get_vector_store_with_namespace(user_id).add_documents(
+            document_ids = self.get_vector_store_with_namespace(user_id).add_documents(
                 documents=all_splits, 
                 ids=chunk_ids
             )
