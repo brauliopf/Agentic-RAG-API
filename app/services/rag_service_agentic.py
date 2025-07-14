@@ -15,8 +15,8 @@ from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, 
 from .llm_service import llm_service
 from .document_service import document_service
 from langchain_core.messages import HumanMessage, SystemMessage, RemoveMessage, BaseMessage, ToolMessage
-from langgraph.graph import MessagesState, StateGraph
-from langchain_core.tools import tool
+from langgraph.graph import StateGraph
+from langchain_core.tools import InjectedToolArg,tool
 
 from langgraph.graph import StateGraph, START, END
 from ..models.requests import GradeDocuments
@@ -81,8 +81,8 @@ class RAGServiceAgentic:
                 return [""] + value.split(",")
             return []
 
-        async def retrieve_for_user_parallel(state, query):
-            user_id = state.get("user_id", "_")
+        async def retrieve_execute_parallel(user_id, query):
+            # user_id = state.get("user_id", "_")
             
             # Get doc group ids from Redis
             # This is the list of doc groups that the user has access to
@@ -123,50 +123,16 @@ class RAGServiceAgentic:
             logger.info("Retrieved documents", user_id=user_id, num_docs=len(retrieved_docs))
             return serialized
 
-        # Placeholder for a custom retriever tool (ref: custom_retriever_node)
-        # Declare the tool name to let the agent invoke the tool (this is a placeholder only).
+
         @tool
-        def retrieve_knowledge_base(query: str) -> str:
+        def retrieve_for_user_id(query: str, user_id: Annotated[str, InjectedToolArg]) -> str:
             """Search and return information from a user-specific knowledge base."""
-            return query
-        
-        retriever_tool = retrieve_knowledge_base
+            return retrieve_execute_parallel(user_id, query)
 
-        # Custom tool node that can access state
-        # This is the actual function that delivers the retrieved documents to the agent.
-        async def custom_retriever_node(state: UserMessagesState):
-            """Custom tool node that handles retrieval with user context."""
-            # Get the last message with tool calls
-            last_tool_request_message = None
-            for message in reversed(state["messages"]):
-                if hasattr(message, 'tool_calls') and message.tool_calls:
-                    last_tool_request_message = message
-                    break
-            
-            # If there is no tool call, return empty list --add nothing to the messages list
-            if not last_tool_request_message or not last_tool_request_message.tool_calls:
-                return {"messages": []}
-            
-            # Process tool calls
-            tool_messages = []
-            for tool_call in last_tool_request_message.tool_calls:
-                if tool_call["name"] == "retrieve_knowledge_base":
-                    query = tool_call["args"]["query"]
-                    result = await retrieve_for_user_parallel(state, query)
-                    
-                    # Create tool message
-                    tool_message = ToolMessage(
-                        content=result,
-                        tool_call_id=tool_call["id"]
-                    )
-                    tool_messages.append(tool_message)
-            
-            return {"messages": tool_messages}
-
-        # 2. Get graph builder with custom state
         workflow = StateGraph(UserMessagesState)
 
-        # 3. Node to decide if we need to retrieve or respond
+        # 1: Take task + Decide whether to respond or retrieve.
+        # Node to decide if we need to retrieve or respond
         # If we need to retrieve, "response" will contain a tool call
         # If we don't need to retrieve, "response" will contain a message with the answer
         def generate_query_or_respond(state: UserMessagesState):
@@ -176,38 +142,17 @@ class RAGServiceAgentic:
             last_message = state["messages"][-1] # either the first query or a rewritten query
             sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=last_message.content)
 
-            chat_length = sum(len(m.content) for m in state['messages'])
-
-            if chat_length >= 10000000:
-                # Invoke the model to summarize the conversation
-                summary_prompt = (
-                    "Distill the above chat messages into a single summary message. "
-                    "Include as many specific details as you can."
-                    "Include a summmary of every question and answer exchange, structured as an ordered list of questions (sender and content) and answers (sender and content)."
-                )
-                summary_message = llm_service.llm.invoke(
-                    state["messages"] + [HumanMessage(content=summary_prompt)]
-                )
-
-                # Delete messages that we no longer want to show (default to entire conversation history)
-                delete_messages = [RemoveMessage(id=m.id) for m in state["messages"]]
-
-                # Generate response based on the summary of the conversation
-                response = llm_service.llm.invoke(
-                    [summary_message, last_message, SystemMessage(content=sys_prompt)]
-                )
-                
-                # Return both the response and delete messages as separate items in the messages list
-                return {"messages": [summary_message, last_message, response] + delete_messages}
-            else:
-                messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
-                response = llm_service.llm.bind_tools([retriever_tool]).invoke(messages)
+            messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
+            response = llm_service.llm.bind_tools([retrieve_for_user_id]).invoke(messages)
 
             return {"messages": [response]}
         
+        # 2: Execute the retrieval.
+        tools = ToolNode([retrieve_for_user_id])
+        
         workflow.add_node(generate_query_or_respond)
         workflow.add_edge(START, "generate_query_or_respond")
-        workflow.add_node("retriever_node", custom_retriever_node)
+        workflow.add_node("retriever_node", tools)
         workflow.add_conditional_edges(
             "generate_query_or_respond",
             tools_condition, # LangGraph's function to check if the LLM's response contains tool calls
