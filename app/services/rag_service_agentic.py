@@ -4,8 +4,8 @@ import json
 import os
 import asyncio
 
-from langgraph.graph import START, StateGraph
-from typing import Dict, Any, Optional, Literal
+from langgraph.graph import START, END, StateGraph
+from typing import Dict, Any, Literal
 from langgraph.checkpoint.memory import MemorySaver
 from typing_extensions import TypedDict, Annotated
 from operator import add
@@ -14,15 +14,15 @@ from ..core.logging import get_logger
 from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, SYSTEM_PROMPT_TEMPLATE
 from .llm_service import llm_service
 from .document_service import document_service
-from langchain_core.messages import HumanMessage, SystemMessage, RemoveMessage, BaseMessage, ToolMessage
-from langgraph.graph import StateGraph
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from langchain_core.tools import InjectedToolArg,tool
 
-from langgraph.graph import StateGraph, START, END
 from ..models.requests import GradeDocuments
 from langgraph.prebuilt import ToolNode
 from langgraph.prebuilt import tools_condition
 from ..core.redis_client import redis
+
+from copy import deepcopy
 
 logger = get_logger(__name__)
 
@@ -125,12 +125,15 @@ class RAGServiceAgentic:
 
 
         @tool
-        def retrieve_for_user_id(query: str, user_id: Annotated[str, InjectedToolArg]) -> str:
+        async def retrieve_for_user_id(query: str, user_id: Annotated[str, InjectedToolArg]) -> str:
             """Search and return information from a user-specific knowledge base."""
-            return retrieve_execute_parallel(user_id, query)
+            return await retrieve_execute_parallel(user_id, query)
 
         workflow = StateGraph(UserMessagesState)
 
+        ##########
+        # Define nodes and edges.
+        ##########
         # 1: Take task + Decide whether to respond or retrieve.
         # Node to decide if we need to retrieve or respond
         # If we need to retrieve, "response" will contain a tool call
@@ -143,7 +146,18 @@ class RAGServiceAgentic:
             sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=last_message.content)
 
             messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
-            response = llm_service.llm.bind_tools([retrieve_for_user_id]).invoke(messages)
+
+            llm_with_tools = llm_service.llm.bind_tools([retrieve_for_user_id])
+            response = llm_with_tools.invoke(messages)
+            
+            # If the response contains tool calls, inject user_id into them
+            if response.tool_calls:
+                updated_tool_calls = []
+                for tool_call in response.tool_calls:
+                    tool_call_copy = deepcopy(tool_call)
+                    tool_call_copy["args"]["user_id"] = state["user_id"]
+                    updated_tool_calls.append(tool_call_copy)
+                response.tool_calls = updated_tool_calls
 
             return {"messages": [response]}
         
