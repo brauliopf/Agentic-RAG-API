@@ -16,6 +16,7 @@ from .llm_service import llm_service
 from .document_service import document_service
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from langchain_core.tools import InjectedToolArg,tool
+from langchain_tavily import TavilySearch
 
 from ..models.requests import GradeDocuments
 from langgraph.prebuilt import ToolNode
@@ -123,7 +124,14 @@ class RAGServiceAgentic:
             logger.info("Retrieved documents", user_id=user_id, num_docs=len(retrieved_docs))
             return serialized
 
-
+        @tool
+        def tavily_search_tool(
+            query: Annotated[str, 'The query to search Tavily for']
+        ) -> str:
+            """Perform a search on Tavily"""
+            print(f">>>>> Searching Tavily for: {query}")
+            return TavilySearch(max_results=3).run(query)
+        
         @tool
         async def retrieve_for_user_id(query: str, user_id: Annotated[str, InjectedToolArg]) -> str:
             """Search and return information from a user-specific knowledge base."""
@@ -147,7 +155,7 @@ class RAGServiceAgentic:
 
             messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
 
-            llm_with_tools = llm_service.llm.bind_tools([retrieve_for_user_id])
+            llm_with_tools = llm_service.llm.bind_tools([retrieve_for_user_id, tavily_search_tool])
             response = llm_with_tools.invoke(messages)
             
             # If the response contains tool calls, inject user_id into them
@@ -162,7 +170,7 @@ class RAGServiceAgentic:
             return {"messages": [response]}
         
         # 2: Execute the retrieval.
-        tools = ToolNode([retrieve_for_user_id])
+        tools = ToolNode([retrieve_for_user_id, tavily_search_tool])
         
         workflow.add_node(generate_query_or_respond)
         workflow.add_edge(START, "generate_query_or_respond")
