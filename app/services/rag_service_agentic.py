@@ -8,7 +8,7 @@ from typing import Dict, Any, Literal
 from langgraph.checkpoint.memory import MemorySaver
 
 from ..core.logging import get_logger
-from ..core.prompts import GRADE_DOCUMENTS_TEMPLATE, REWRITE_QUESTION_TEMPLATE, SYSTEM_PROMPT_TEMPLATE
+from agent.prompts import GRADE_DOCUMENTS_TEMPLATE
 from .llm_service import llm_service
 from .document_service import document_service
 from langchain_core.messages import HumanMessage
