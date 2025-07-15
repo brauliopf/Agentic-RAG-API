@@ -2,7 +2,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from copy import deepcopy
 from .tools import retrieve_for_user_id, tavily_search_tool
 from ..llm_service import llm_service
-from agent.prompts import SYSTEM_PROMPT_TEMPLATE, REWRITE_QUESTION_TEMPLATE
+from .prompts import SYSTEM_PROMPT_TEMPLATE, REWRITE_QUESTION_TEMPLATE
 from .schemas import UserMessagesState
 import json
 

@@ -8,7 +8,7 @@ from typing import Dict, Any, Literal
 from langgraph.checkpoint.memory import MemorySaver
 
 from ..core.logging import get_logger
-from agent.prompts import GRADE_DOCUMENTS_TEMPLATE
+from .agent.prompts import GRADE_DOCUMENTS_TEMPLATE
 from .llm_service import llm_service
 from .document_service import document_service
 from langchain_core.messages import HumanMessage
@@ -133,20 +133,29 @@ class RAGServiceAgentic:
             # Graph has a checkpointer that will maintain conversation history via the thread_id
             result = await self.graph.ainvoke(initial_state, config=config)
             
+            # Extract sources from tool messages
+            sources = []
+            for message in result["messages"]:
+                # Check if it's a tool message from the retriever
+                if hasattr(message, 'name') and message.name == "retrieve_for_user_id":
+                    extracted_sources = self._extract_sources_from_tool_message(message.content)
+                    sources.extend(extracted_sources)
+            
             processing_time = time.time() - start_time
             
             logger.info(
                 "RAG query completed", 
                 query_id=query_id,
                 processing_time=processing_time,
-                user_id=user_id
+                user_id=user_id,
+                sources_count=len(sources)
             )
             
             return {
                 "id": query_id,
                 "question": query,
                 "answer": result["messages"][-1].content,
-                "context": [],
+                "context": sources,
                 "processing_time": processing_time,
                 "created_at": time.time()
             }
@@ -158,15 +167,24 @@ class RAGServiceAgentic:
             raise
 
     @staticmethod
-    def _extract_sources_from_tool_message(message_content: str) -> list[str]:
+    def _extract_sources_from_tool_message(message_content: str) -> list[dict]:
         """Extracts sources from the retriever tool message content."""
+        import ast
+        
         sources = []
         for line in message_content.splitlines():
             if line.startswith("Source: "):
                 # Extract after 'Source: ' and before (optional) newline or 'Content:'
                 src = line[len("Source: "):].strip()
                 if src:
-                    sources.append(src)
+                    try:
+                        # Parse the string representation of the dictionary back to a dict
+                        source_dict = ast.literal_eval(src)
+                        sources.append(source_dict)
+                    except (ValueError, SyntaxError) as e:
+                        logger.warning(f"Failed to parse source metadata: {src}", error=str(e))
+                        # Fallback: create a simple dict with the raw string
+                        sources.append({"raw_metadata": src})
         return sources
 
 # Global service instance

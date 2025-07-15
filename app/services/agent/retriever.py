@@ -44,7 +44,7 @@ async def retrieve_execute_parallel(user_id, query):
   # Get results from all parallel tasks (wait for all to complete)
   # Each task retrieves from a doc_group_id and returns up to 4 results (k=4)
   # If no match is found, the task returns an empty list
-  # Each result has the following structure: (doc{id, metadata, page_content}, similarity_score)
+  # Each top_doc has the following structure: (doc{id, metadata, page_content}, similarity_score)
   # Flatten. Sort docs. Take top 5,
   results = await asyncio.gather(*tasks)
   all_docs = [doc for group in results for doc in group]
@@ -52,7 +52,7 @@ async def retrieve_execute_parallel(user_id, query):
   logger.info("Top docs", top_docs=top_docs)
 
   # Format results - Extract and serialize the document objects
-  retrieved_docs = [doc for doc, _ in top_docs]
+  retrieved_docs = [doc for doc, score in top_docs]
   serialized = "\n\n".join(
       f"Source: {doc.metadata}\nContent: {doc.page_content}"
       for doc in retrieved_docs
