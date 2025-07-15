@@ -34,7 +34,7 @@ class RAGServiceAgentic:
             # ** This graph trusts the retrieval process more than it trusts the LLM judgement about the use of the tool.
             # If the doc grader says the content is good, then the next node does not allow for retrieval, it's got to answer!
             # Thus, the quality of the grader model is critical.
-            self.graph = self._build_graph()
+            self.graph = self.build_graph()
             self._save_graph()
             
         except Exception as e:
@@ -52,7 +52,7 @@ class RAGServiceAgentic:
         with open(graph_path, "wb") as f:
             f.write(graph_png)
 
-    def _build_graph(self) -> StateGraph:
+    def build_graph(self) -> StateGraph:
         """Build the LangGraph pipeline."""
 
         def _grade_documents_router(
