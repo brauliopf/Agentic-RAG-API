@@ -35,14 +35,14 @@ class RAGServiceAgentic:
             # If the doc grader says the content is good, then the next node does not allow for retrieval, it's got to answer!
             # Thus, the quality of the grader model is critical.
             self.graph = self.build_graph()
-            self._save_graph()
+            self.save_graph()
             
         except Exception as e:
             logger.error("Failed to initialize RAG pipeline", error=str(e))
             raise
         logger.info("Initialized Agentic RAG Service")
     
-    def _save_graph(self):
+    def save_graph(self):
         # Save graph visualization to file
         graph_png = self.graph.get_graph().draw_mermaid_png()
         # Use absolute path based on current file location
@@ -55,7 +55,10 @@ class RAGServiceAgentic:
     def build_graph(self) -> StateGraph:
         """Build the LangGraph pipeline."""
 
-        def _grade_documents_router(
+        workflow = StateGraph(UserMessagesState)
+        tools = ToolNode([retrieve_for_user_id, tavily_search_tool])
+
+        def grade_documents_router(
             state: UserMessagesState,
         ) -> Literal["generate_answer", "rewrite_question"]:
             """Determine whether the retrieved documents are relevant to the question."""
@@ -77,10 +80,6 @@ class RAGServiceAgentic:
                 return "generate_answer"
             else:
                 return "rewrite_question"
-
-        workflow = StateGraph(UserMessagesState)
-        
-        tools = ToolNode([retrieve_for_user_id, tavily_search_tool])
         
         workflow.add_node(generate_query_or_respond)
         workflow.add_edge(START, "generate_query_or_respond")
@@ -98,12 +97,11 @@ class RAGServiceAgentic:
         
         workflow.add_conditional_edges(
             "tools_node",
-            _grade_documents_router
+            grade_documents_router
         )
         workflow.add_edge("rewrite_question", "generate_query_or_respond")
         workflow.add_edge("generate_answer", END)
 
-        # Compile with memory checkpointer for session persistence
         memory = MemorySaver()
         return workflow.compile(checkpointer=memory)
     
@@ -138,7 +136,7 @@ class RAGServiceAgentic:
             for message in result["messages"]:
                 # Check if it's a tool message from the retriever
                 if hasattr(message, 'name') and message.name == "retrieve_for_user_id":
-                    extracted_sources = self._extract_sources_from_tool_message(message.content)
+                    extracted_sources = self.extract_sources_from_tool_message(message.content)
                     sources.extend(extracted_sources)
             
             processing_time = time.time() - start_time
@@ -167,7 +165,7 @@ class RAGServiceAgentic:
             raise
 
     @staticmethod
-    def _extract_sources_from_tool_message(message_content: str) -> list[dict]:
+    def extract_sources_from_tool_message(message_content: str) -> list[dict]:
         """Extracts sources from the retriever tool message content."""
         import ast
         
