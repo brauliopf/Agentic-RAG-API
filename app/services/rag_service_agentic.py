@@ -14,10 +14,8 @@ from .document_service import document_service
 from langchain_core.messages import HumanMessage
 
 from ..models.requests import GradeDocuments
-from langgraph.prebuilt import ToolNode
 from langgraph.prebuilt import tools_condition
-from .agent.tools import tavily_search_tool, retrieve_for_user_id
-from .agent.nodes import generate_query_or_respond, rewrite_question, generate_answer, get_last_human_message
+from .agent.nodes import generate_query_or_respond, rewrite_question, generate_answer, get_last_human_message, tools_node
 from .agent.schemas import UserMessagesState
 from copy import deepcopy
 
@@ -56,7 +54,6 @@ class RAGServiceAgentic:
         """Build the LangGraph pipeline."""
 
         workflow = StateGraph(UserMessagesState)
-        tools = ToolNode([retrieve_for_user_id, tavily_search_tool])
 
         def grade_documents_router(
             state: UserMessagesState,
@@ -83,7 +80,7 @@ class RAGServiceAgentic:
         
         workflow.add_node(generate_query_or_respond)
         workflow.add_edge(START, "generate_query_or_respond")
-        workflow.add_node("tools_node", tools)
+        workflow.add_node("tools_node", tools_node)
         workflow.add_conditional_edges(
             "generate_query_or_respond",
             tools_condition, # LangGraph's function to check if the LLM's response contains tool calls

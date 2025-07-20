@@ -1,10 +1,13 @@
 # Existing dependencies
+base64
 bs4
 fastapi[standard]
+google-generativeai
 langchain-text-splitters
 langchain-community
 langchain[groq] # install core langchain, groq and "flavored dependencies"
 langchain[openai]
+langchain-google-genai
 langgraph
 langsmith>=0.1.0  # LangSmith for monitoring and debugging
 python-dotenv

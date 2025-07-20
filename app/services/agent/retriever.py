@@ -17,7 +17,6 @@ async def _async_similarity_search(vector_store, query, filter):
     loop = asyncio.get_event_loop()
     logger.info("Run Similarity search", query=query, filter=filter)
     return await loop.run_in_executor(
-        # reference langchain + pinecone: 
         None, lambda: vector_store.similarity_search_with_score(query, k=4, filter=filter)
     )
 

@@ -1,10 +1,14 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 from copy import deepcopy
-from .tools import retrieve_for_user_id, tavily_search_tool
+from .tools import retrieve_for_user_id, tavily_search_tool, query_video, read_image
 from ..llm_service import llm_service
 from .prompts import SYSTEM_PROMPT_TEMPLATE, REWRITE_QUESTION_TEMPLATE
 from .schemas import UserMessagesState
 import json
+from langgraph.prebuilt import ToolNode
+
+tools = [retrieve_for_user_id, tavily_search_tool, query_video, read_image]
+tools_node = ToolNode(tools)
 
 # 1: Take task + Decide whether to respond or retrieve.
 # Node to decide if we need to retrieve or respond
@@ -19,7 +23,7 @@ def generate_query_or_respond(state: UserMessagesState):
 
     messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
 
-    llm_with_tools = llm_service.llm.bind_tools([retrieve_for_user_id, tavily_search_tool])
+    llm_with_tools = llm_service.llm.bind_tools(tools)
     response = llm_with_tools.invoke(messages)
     
     # If the response contains tool calls, inject user_id into them
