@@ -1,5 +1,4 @@
 # Existing dependencies
-base64
 bs4
 fastapi[standard]
 google-generativeai
