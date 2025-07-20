@@ -18,9 +18,9 @@ def generate_query_or_respond(state: UserMessagesState):
     """Decide to retrieve, or simply respond to the user.
     Takes all the messages in the state and returns a response."""
 
+    # Get all messages, enhancing the last message with the system prompt
     last_message = state["messages"][-1] # either the first query or a rewritten query
     sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=last_message.content)
-
     messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
 
     llm_with_tools = llm_service.llm.bind_tools(tools)

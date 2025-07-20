@@ -115,7 +115,11 @@ class RAGServiceAgentic:
         try:
             logger.info("Starting RAG query", query_id=query_id, query=query, thread_id=thread_id, user_id=user_id)
             
-            # Create config with thread_id for session persistence
+            ##############
+            # Run the RAG pipeline
+            ##############
+
+            # Create config with thread_id for session persistence --to maintain conversation history
             config = {"configurable": {"thread_id": thread_id}}
             
             # Add the new user message to the conversation with user_id in state
@@ -124,8 +128,7 @@ class RAGServiceAgentic:
                 "user_id": user_id
             }
             
-            # Run the RAG pipeline
-            # Graph has a checkpointer that will maintain conversation history via the thread_id
+            # Invoke graph with initial state and config
             result = await self.graph.ainvoke(initial_state, config=config)
             
             # Extract sources from tool messages
