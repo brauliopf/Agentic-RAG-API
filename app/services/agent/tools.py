@@ -74,7 +74,7 @@ def query_video(video_url: str, query: str) -> dict:
       video_url (str): The URL of the YouTube video to query.
       query (str): The question to ask about the video.
     Returns:
-      dict: A structured answer with the fields: 'answer', 'reasoning'. For example: {video_url: 'https://www.youtube.com/watch?v=1htKBjuUWec', query: 'What does Teal\'c say in response to the question "Isn\'t that hot?"'} => {'answer': 'Teal\'c says "Extremely"', 'reasoning': 'Teal\'c responds with a factual answer to the question in one word "Extremely".'}
+      dict: A structured answer with the fields: 'answer', 'reasoning'. For example: {video_url: 'https://www.youtube.com/watch?v=1htKBjuUWec', query: 'What does the lady in purple say when she enters the room?'} => {'answer': 'The lady says "Ok. Let\'s do this."', 'reasoning': 'Several people enter the room, a women in a purple shirt says "Ok. Let\'s do this."'}
     """
     # Use native API for video processing
     genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
