@@ -1,40 +1,70 @@
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, AIMessage
 from copy import deepcopy
 from .tools import retrieve_for_user_id, tavily_search_tool, query_video, read_image
 from ..llm_service import llm_service
-from .prompts import SYSTEM_PROMPT_TEMPLATE, REWRITE_QUESTION_TEMPLATE
+from .prompts import AGENT_PROMPT_TEMPLATE
 from .schemas import UserMessagesState
 import json
 from langgraph.prebuilt import ToolNode
 
-tools = [retrieve_for_user_id, tavily_search_tool, query_video, read_image]
+
+tools = [tavily_search_tool, query_video, read_image]
 tools_node = ToolNode(tools)
 
-# 1: Take task + Decide whether to respond or retrieve.
-# Node to decide if we need to retrieve or respond
-# If we need to retrieve, "response" will contain a tool call
-# If we don't need to retrieve, "response" will contain a message with the answer
-def generate_query_or_respond(state: UserMessagesState):
+# THIS IS SET UP TO ALWAYS RETRIEVE
+# TODO: use a pre-rag task to determine fit of question to retrieve and embedded documents
+# You can do this with a cosine similarity call to a vector db with embeddings of the summary + keywords of the documents
+# Try Redis or Pinecone.
+def should_retrieve(state: UserMessagesState):
+    question = get_last_human_message(state)
+    
+    # Output a tool call, not the result
+    tool_call = {
+        "name": "retrieve_for_user_id",
+        "args": {
+            "user_id": state["user_id"],
+            "query": question
+        },
+        "id": "retrieve_tool_call"
+    }
+    ai_message = AIMessage(
+        content="Calling retrieve_for_user_id tool.",
+        tool_calls=[tool_call]
+    )
+    # Return the AI message so it is added to the conversation state
+    return {"messages": [ai_message]}
+
+async def retriever_node(state: UserMessagesState):
+    """Retrieve information from the knowledge base."""
+    # Get the last human input before the retriever_node
+    question = get_last_human_message(state)
+    
+    # Use invoke instead of direct call and await the async function
+    response = await retrieve_for_user_id.ainvoke({"user_id": state["user_id"], "query": question})
+
+    # Create a proper ToolMessage with the tool name
+    tool_message = ToolMessage(
+        content=response,
+        tool_call_id="retrieve_tool_call", 
+        name="retrieve_for_user_id"
+    )
+
+    return {"messages": [tool_message]}
+
+def agent_node(state: UserMessagesState):
     """Decide to retrieve, or simply respond to the user.
     Takes all the messages in the state and returns a response."""
 
-    last_message = state["messages"][-1] # either the first query or a rewritten query
-    sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=last_message.content)
+    # Preserve the full conversation history, including any tool messages,
+    # and add a fresh system prompt that references the last *human* question.
+    question = get_last_human_message(state)
+    agent_prompt = AGENT_PROMPT_TEMPLATE.format(question=question)
+    messages = state["messages"] + [SystemMessage(content=agent_prompt)]
 
-    messages = [*state["messages"][:-1], SystemMessage(content=sys_prompt)]
-
+    # Bind tools to the LLM
     llm_with_tools = llm_service.llm.bind_tools(tools)
     response = llm_with_tools.invoke(messages)
     
-    # If the response contains tool calls, inject user_id into them
-    if response.tool_calls:
-        updated_tool_calls = []
-        for tool_call in response.tool_calls:
-            tool_call_copy = deepcopy(tool_call)
-            tool_call_copy["args"]["user_id"] = state["user_id"]
-            updated_tool_calls.append(tool_call_copy)
-        response.tool_calls = updated_tool_calls
-
     return {"messages": [response]}
 
 def get_last_human_message(state: UserMessagesState):
@@ -44,7 +74,34 @@ def get_last_human_message(state: UserMessagesState):
             return message.content
     return None
 
-# 4. Node to rewrite the question
+def generate_answer(state: UserMessagesState):
+    """Generate an answer."""
+
+    # Get the last human input before the retriever_node
+    question = get_last_human_message(state)
+    sys_prompt = AGENT_PROMPT_TEMPLATE.format(question=question)
+    messages = state["messages"] + [SystemMessage(content=sys_prompt)]
+    response = llm_service.llm.invoke(messages)
+
+    return {"messages": [response]}  # Wrap response in a list
+
+######################################
+############ BACKUP NODES ############
+######################################
+
+# Question Rewriting Prompt
+from langchain_core.prompts import PromptTemplate
+
+REWRITE_QUESTION_TEMPLATE = """
+You are a helpful assistant that helps answer questions. You rewrite the question received to try to extract additional information from your database, to inform yourself and answer the question in a more complete way. This is the question received:
+------- 
+{question}
+-------
+Edit, but do not alter the meaning or intention of a question. Respond to this message in a structured format, with an object with a key "question" and the value set to the edited question. Do not include any other text or formatting.
+For example: Ex: {{"question": "IMPROVED QUESTION?"}}
+"""
+REWRITE_QUESTION_PROMPT_TEMPLATE = PromptTemplate.from_template(REWRITE_QUESTION_TEMPLATE)
+
 def rewrite_question(state: UserMessagesState):
     """Rewrite the original user question."""
     # Get the last human input before the retriever_node
@@ -61,14 +118,3 @@ def rewrite_question(state: UserMessagesState):
     # Add the rewritten question to the existing messages as a HumanMessage
     rewritten_question = HumanMessage(content=response_json["question"])
     return {"messages": [rewritten_question]}
-
-def generate_answer(state: UserMessagesState):
-    """Generate an answer."""
-
-    # Get the last human input before the retriever_node
-    question = get_last_human_message(state)
-    sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(question=question)
-    messages = state["messages"] + [SystemMessage(content=sys_prompt)]
-    response = llm_service.llm.invoke(messages)
-
-    return {"messages": [response]}  # Wrap response in a list

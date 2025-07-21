@@ -20,9 +20,10 @@ def tavily_search_tool(
     return TavilySearch(max_results=3).run(query)
 
 @tool
-async def retrieve_for_user_id(query: str, user_id: Annotated[str, InjectedToolArg]) -> str:
+async def retrieve_for_user_id(user_id: str, query: str) -> str:
   """Search and return information from a user-specific knowledge base."""
   return await retrieve_execute_parallel(user_id, query)
+
 
 def encode_image(image_path: str) -> str:
     """

@@ -1,4 +1,4 @@
-from ..services.rag_service_agentic import rag_service_agentic
+from ..services.agent.rag_service_agentic import rag_service_agentic
 from ..services.document_service import document_service
 from ..services.llm_service import llm_service
 from ..core.auth import get_current_user, get_current_user_id
