@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ....models.requests import QueryRequest
 from ....models.responses import QueryResponse
-from ....services.rag_service_agentic import RAGServiceAgentic
+from ....services.agent.rag_service_agentic import RAGServiceAgentic
 from ....core.auth import get_current_user, get_current_user_id
 from ...deps import get_rag_service_agentic
 from ....core.logging import get_logger
