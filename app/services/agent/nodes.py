@@ -11,9 +11,13 @@ from langgraph.prebuilt import ToolNode
 tools = [tavily_search_tool, query_video, read_image]
 tools_node = ToolNode(tools)
 
-
+# THIS IS SET UP TO ALWAYS RETRIEVE
+# TODO: use a pre-rag task to determine fit of question to retrieve and embedded documents
+# You can do this with a cosine similarity call to a vector db with embeddings of the summary + keywords of the documents
+# Try Redis or Pinecone.
 def should_retrieve(state: UserMessagesState):
     question = get_last_human_message(state)
+    
     # Output a tool call, not the result
     tool_call = {
         "name": "retrieve_for_user_id",
@@ -27,6 +31,7 @@ def should_retrieve(state: UserMessagesState):
         content="Calling retrieve_for_user_id tool.",
         tool_calls=[tool_call]
     )
+    # Return the AI message so it is added to the conversation state
     return {"messages": [ai_message]}
 
 async def retriever_node(state: UserMessagesState):
@@ -50,14 +55,13 @@ def agent_node(state: UserMessagesState):
     """Decide to retrieve, or simply respond to the user.
     Takes all the messages in the state and returns a response."""
 
-    # Get all messages, enhancing the last message with the system prompt
-    last_message = state["messages"][-1] # either the first query or a rewritten query
-    agent_prompt = AGENT_PROMPT_TEMPLATE.format(question=last_message.content)
-    messages = [*state["messages"][:-1], SystemMessage(content=agent_prompt)]
+    # Preserve the full conversation history, including any tool messages,
+    # and add a fresh system prompt that references the last *human* question.
+    question = get_last_human_message(state)
+    agent_prompt = AGENT_PROMPT_TEMPLATE.format(question=question)
+    messages = state["messages"] + [SystemMessage(content=agent_prompt)]
 
     # Bind tools to the LLM
-    tools.pop(0)
-    print(tools)
     llm_with_tools = llm_service.llm.bind_tools(tools)
     response = llm_with_tools.invoke(messages)
     

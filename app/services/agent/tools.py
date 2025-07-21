@@ -19,6 +19,7 @@ def tavily_search_tool(
     """Perform a search on Tavily"""
     return TavilySearch(max_results=3).run(query)
 
+@tool
 async def retrieve_for_user_id(user_id: str, query: str) -> str:
   """Search and return information from a user-specific knowledge base."""
   return await retrieve_execute_parallel(user_id, query)

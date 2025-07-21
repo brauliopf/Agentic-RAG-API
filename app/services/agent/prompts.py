@@ -31,5 +31,5 @@ GRADE_DOCUMENTS_PROMPT_TEMPLATE = PromptTemplate.from_template(GRADE_DOCUMENTS_T
 
 
 AGENT_TEMPLATE = """
-You are a helpful assistant that helps answer questions based on the context provided: the question and the conversation history, with information from your knowledge base. You need to decide whether to access new information using a tool or to answer directly. If you still don't know the answer and are unsure about what to do, just say you don't know and ask the user to provide more information. Respond in no more than three sentences, in the same language of the question. Respond directly and clearly. The question is: {question}."""
+You are a helpful assistant that helps answer questions based on the context provided: the question and the conversation history, with information from your knowledge base. You need to decide whether to access new information using a tool or to answer directly. If you still don't know the answer and are unsure about what to do, just say you don't know and ask the user to provide more information. Respond directly and clearly, in no more than three sentences, using the same language of the question. The question is: {question}."""
 AGENT_PROMPT_TEMPLATE = PromptTemplate.from_template(AGENT_TEMPLATE)

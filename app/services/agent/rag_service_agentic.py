@@ -7,16 +7,16 @@ from langgraph.graph import START, END, StateGraph
 from typing import Dict, Any, Literal
 from langgraph.checkpoint.memory import MemorySaver
 
-from ..core.logging import get_logger
-from .agent.prompts import GRADE_DOCUMENTS_TEMPLATE
-from .llm_service import llm_service
-from .document_service import document_service
+from ...core.logging import get_logger
+from ..agent.prompts import GRADE_DOCUMENTS_TEMPLATE
+from ..llm_service import llm_service
+from ..document_service import document_service
 from langchain_core.messages import HumanMessage
 
-from ..models.requests import GradeDocuments
+from ...models.requests import GradeDocuments
 from langgraph.prebuilt import tools_condition
-from .agent.nodes import should_retrieve, retriever_node, agent_node, generate_answer, get_last_human_message, tools_node   
-from .agent.schemas import UserMessagesState
+from ..agent.nodes import should_retrieve, retriever_node, agent_node, generate_answer, get_last_human_message, tools_node   
+from ..agent.schemas import UserMessagesState
 
 logger = get_logger(__name__)
 
@@ -45,13 +45,15 @@ class RAGServiceAgentic:
         # Use absolute path based on current file location
         # current_dir gets the directory of the current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        graph_path = os.path.join(current_dir, "agent/graphs", "graph_agentic.png")
+        graph_path = os.path.join(current_dir, "graphs", "graph_agentic.png")
         with open(graph_path, "wb") as f:
             f.write(graph_png)
 
     def route_after_prerag(self, state: UserMessagesState) -> Literal["retriever_node", "agent_node"]:
         """Route the agent after the pre-RAG node."""
-        return "retriever_node" if state["should_RAG"] else "agent_node"
+        last = state["messages"][-1]
+        has_tool_call = getattr(last, "tool_calls", None)
+        return "retriever_node" if has_tool_call else "agent_node"
     
     def build_graph(self) -> StateGraph:
         """Build the LangGraph pipeline."""
@@ -107,7 +109,6 @@ class RAGServiceAgentic:
             initial_state = {
                 "messages": [HumanMessage(content=query)],
                 "user_id": user_id,
-                "should_RAG": False
             }
             
             # Invoke graph with initial state and config
