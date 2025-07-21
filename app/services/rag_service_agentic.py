@@ -15,9 +15,8 @@ from langchain_core.messages import HumanMessage
 
 from ..models.requests import GradeDocuments
 from langgraph.prebuilt import tools_condition
-from .agent.nodes import generate_query_or_respond, rewrite_question, generate_answer, get_last_human_message, tools_node
+from .agent.nodes import should_retrieve, retriever_node, agent_node, generate_answer, get_last_human_message, tools_node   
 from .agent.schemas import UserMessagesState
-from copy import deepcopy
 
 logger = get_logger(__name__)
 
@@ -50,53 +49,35 @@ class RAGServiceAgentic:
         with open(graph_path, "wb") as f:
             f.write(graph_png)
 
+    def route_after_prerag(self, state: UserMessagesState) -> Literal["retriever_node", "agent_node"]:
+        """Route the agent after the pre-RAG node."""
+        return "retriever_node" if state["should_RAG"] else "agent_node"
+    
     def build_graph(self) -> StateGraph:
         """Build the LangGraph pipeline."""
 
         workflow = StateGraph(UserMessagesState)
-
-        def grade_documents_router(
-            state: UserMessagesState,
-        ) -> Literal["generate_answer", "rewrite_question"]:
-            """Determine whether the retrieved documents are relevant to the question."""
-            # Get the last human input before the retriever_node
-            question = get_last_human_message(state)
-            
-            # Get the last message with tool calls
-            context = state["messages"][-1].content
-
-            prompt = GRADE_DOCUMENTS_TEMPLATE.format(question=question, context=context)
-            response = (
-                llm_service.llm
-                .with_structured_output(GradeDocuments).invoke(
-                    [HumanMessage(content=prompt)]
-                )
-            )
-
-            if response.binary_score == "yes":
-                return "generate_answer"
-            else:
-                return "rewrite_question"
         
-        workflow.add_node(generate_query_or_respond)
-        workflow.add_edge(START, "generate_query_or_respond")
-        workflow.add_node("tools_node", tools_node)
+        workflow.add_node(should_retrieve)
+        workflow.add_edge(START, "should_retrieve")
+        workflow.add_node(retriever_node)
+        workflow.add_node(agent_node)
         workflow.add_conditional_edges(
-            "generate_query_or_respond",
+            "should_retrieve",
+            self.route_after_prerag
+        )
+        workflow.add_edge("retriever_node", "agent_node")
+        workflow.add_node("tools_node", tools_node)
+        workflow.add_edge("tools_node", "agent_node")
+        workflow.add_node(generate_answer)
+        workflow.add_conditional_edges(
+            "agent_node",
             tools_condition, # LangGraph's function to check if the LLM's response contains tool calls
             {
                 "tools": "tools_node", # if there is a tool call, go to the tools node
-                END: END, # if there is not a tool call, go to the end node
+                END: "generate_answer", # if there is not a tool call, go to the end node
             },
         )
-        workflow.add_node(rewrite_question)
-        workflow.add_node(generate_answer)
-        
-        workflow.add_conditional_edges(
-            "tools_node",
-            grade_documents_router
-        )
-        workflow.add_edge("rewrite_question", "generate_query_or_respond")
         workflow.add_edge("generate_answer", END)
 
         memory = MemorySaver()
@@ -125,18 +106,19 @@ class RAGServiceAgentic:
             # Add the new user message to the conversation with user_id in state
             initial_state = {
                 "messages": [HumanMessage(content=query)],
-                "user_id": user_id
+                "user_id": user_id,
+                "should_RAG": False
             }
             
             # Invoke graph with initial state and config
             result = await self.graph.ainvoke(initial_state, config=config)
             
-            # Extract sources from tool messages
+            # Extract sources from system messages containing retrieved context
             sources = []
             for message in result["messages"]:
-                # Check if it's a tool message from the retriever
-                if hasattr(message, 'name') and message.name == "retrieve_for_user_id":
-                    extracted_sources = self.extract_sources_from_tool_message(message.content)
+                # Check if it's a system message with retrieved context
+                if hasattr(message, 'content') and isinstance(message.content, str) and message.content.startswith("Retrieved context:\n"):
+                    extracted_sources = self.extract_sources_from_tool_message(message.content.replace("Retrieved context:\n", ""))
                     sources.extend(extracted_sources)
             
             processing_time = time.time() - start_time

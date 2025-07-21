@@ -7,3 +7,4 @@ class UserMessagesState(TypedDict):
     messages: Annotated[list[BaseMessage], add]
     sources: Annotated[list[str], add]
     user_id: str
+    should_RAG: bool

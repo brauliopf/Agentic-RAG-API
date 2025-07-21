@@ -27,20 +27,9 @@ Give a binary score 'yes' or 'no' score to indicate whether the document is rele
 """
 GRADE_DOCUMENTS_PROMPT_TEMPLATE = PromptTemplate.from_template(GRADE_DOCUMENTS_TEMPLATE)
 
-# Question Rewriting Prompt
-REWRITE_QUESTION_TEMPLATE = """
-You are a helpful assistant that helps answer questions. You rewrite the question received to try to extract additional information from your database, to inform yourself and answer the question in a more complete way. This is the question received:
-------- 
-{question}
--------
-Edit, but do not alter the meaning or intention of a question. Respond to this message in a structured format, with an object with a key "question" and the value set to the edited question. Do not include any other text or formatting.
-For example: Ex: {{"question": "IMPROVED QUESTION?"}}
-"""
-REWRITE_QUESTION_PROMPT_TEMPLATE = PromptTemplate.from_template(REWRITE_QUESTION_TEMPLATE)
-
 # Answer Generation Prompt
 
 
-SYSTEM_TEMPLATE = """
-You are a helpful assistant that helps answer questions. Use only what is in the context: the question and the conversation history, with information that comes from your knowledge base. You need to decide whether to search for more context or answer directly. Always consult the base if the question is about internal policies of a company, labor laws, or information about the services and products offered by the company you represent. If you still don't know the answer after searching multiple times, just say you don't know. Respond in no more than three sentences and use the language of the question, directly and clearly. The question is: {question}."""
-SYSTEM_PROMPT_TEMPLATE = PromptTemplate.from_template(SYSTEM_TEMPLATE)
+AGENT_TEMPLATE = """
+You are a helpful assistant that helps answer questions based on the context provided: the question and the conversation history, with information from your knowledge base. You need to decide whether to access new information using a tool or to answer directly. If you still don't know the answer and are unsure about what to do, just say you don't know and ask the user to provide more information. Respond in no more than three sentences, in the same language of the question. Respond directly and clearly. The question is: {question}."""
+AGENT_PROMPT_TEMPLATE = PromptTemplate.from_template(AGENT_TEMPLATE)
